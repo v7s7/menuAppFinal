@@ -168,6 +168,15 @@ service cloud.firestore {
           // No updates or deletes (immutable audit log)
           allow update, delete: if false;
         }
+
+        // -------------------- COUNTERS (ORDER NUMBERING) --------------------
+        match /counters/{counterId} {
+          // READ: Anyone signed in can read counters
+          allow read: if isSignedIn();
+
+          // WRITE: Anyone signed in can update counters (for order number generation)
+          allow write: if isSignedIn();
+        }
       }
     }
     
