@@ -43,9 +43,9 @@ service cloud.firestore {
         
         // -------------------- MENU ITEMS --------------------
         match /menuItems/{itemId} {
-          // PUBLIC READ: Anyone can see active items
-          allow read: if resource == null || resource.data.isActive == true;
-          
+          // PUBLIC READ: Anyone can see menu items (app filters by isActive on client side)
+          allow read: if true;
+
           // STAFF WRITE: Only staff can create/update/delete
           allow create: if isStaff(merchantId, branchId) &&
             request.resource.data.merchantId == merchantId &&
@@ -55,11 +55,20 @@ service cloud.firestore {
             request.resource.data.price >= 0 &&
             request.resource.data.name is string &&
             request.resource.data.name.size() > 0;
-          
+
           allow update: if isStaff(merchantId, branchId);
           allow delete: if isStaff(merchantId, branchId);
         }
-        
+
+        // -------------------- CATEGORIES --------------------
+        match /categories/{categoryId} {
+          // PUBLIC READ: Anyone can see categories
+          allow read: if true;
+
+          // STAFF WRITE: Only staff can create/update/delete
+          allow create, update, delete: if isStaff(merchantId, branchId);
+        }
+
         // -------------------- ORDERS --------------------
         match /orders/{orderId} {
           // CREATE: Any signed-in user can place order
