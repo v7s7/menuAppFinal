@@ -114,8 +114,8 @@ service cloud.firestore {
           // Staff can read all customer profiles
           allow read: if isSignedIn();
 
-          // CREATE/UPDATE: Allow system writes for points management
-          // These happen via transactions in loyalty service
+          // CREATE: Allow creating customer profiles during checkout
+          // All fields must be valid, carPlate and lastOrderAt are optional
           allow create: if isSignedIn() &&
             request.resource.data.phone == phone &&
             request.resource.data.points is int &&
@@ -123,8 +123,12 @@ service cloud.firestore {
             request.resource.data.totalSpent is number &&
             request.resource.data.totalSpent >= 0 &&
             request.resource.data.orderCount is int &&
-            request.resource.data.orderCount >= 0;
+            request.resource.data.orderCount >= 0 &&
+            // Optional fields: carPlate and lastOrderAt
+            (!request.resource.data.keys().hasAny(['carPlate']) || request.resource.data.carPlate is string || request.resource.data.carPlate == null) &&
+            (!request.resource.data.keys().hasAny(['lastOrderAt']) || request.resource.data.lastOrderAt is timestamp || request.resource.data.lastOrderAt == null);
 
+          // UPDATE: Allow updating customer profiles (points, spending, etc.)
           allow update: if isSignedIn() &&
             request.resource.data.phone == resource.data.phone &&  // Can't change phone
             request.resource.data.points is int &&
@@ -132,7 +136,10 @@ service cloud.firestore {
             request.resource.data.totalSpent is number &&
             request.resource.data.totalSpent >= resource.data.totalSpent &&  // Can't decrease
             request.resource.data.orderCount is int &&
-            request.resource.data.orderCount >= resource.data.orderCount;  // Can't decrease
+            request.resource.data.orderCount >= resource.data.orderCount &&  // Can't decrease
+            // Optional fields validation
+            (!request.resource.data.keys().hasAny(['carPlate']) || request.resource.data.carPlate is string || request.resource.data.carPlate == null) &&
+            (!request.resource.data.keys().hasAny(['lastOrderAt']) || request.resource.data.lastOrderAt is timestamp || request.resource.data.lastOrderAt == null);
 
           // No deletes
           allow delete: if false;
