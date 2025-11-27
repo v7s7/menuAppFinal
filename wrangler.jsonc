@@ -1,9 +1,5 @@
 {
-<<<<<<< HEAD
   "name": "sweets",
-=======
-  "name": "sweetweb-email-service",
->>>>>>> 56af5063fb6027a95ac0daf7b77081bc924b497a
   "main": "cloudflare-worker/worker.js",
   "compatibility_date": "2025-11-27"
 }
