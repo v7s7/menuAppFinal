@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -14,6 +15,11 @@ import '../../orders/screens/order_status_page.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/services/email_service.dart' as email;
 
+// Loyalty system
+import '../../loyalty/data/loyalty_models.dart';
+import '../../loyalty/data/loyalty_service.dart';
+import '../../loyalty/widgets/loyalty_checkout_widget.dart';
+
 class CartSheet extends ConsumerStatefulWidget {
   final VoidCallback? onConfirm;
   const CartSheet({super.key, this.onConfirm});
@@ -23,12 +29,108 @@ class CartSheet extends ConsumerStatefulWidget {
 }
 
 class _CartSheetState extends ConsumerState<CartSheet> {
-  final _emailController = TextEditingController();
+  CheckoutData _checkoutData = const CheckoutData(
+    phone: '',
+    carPlate: '',
+    pointsToUse: 0,
+    discount: 0,
+  );
 
-  @override
-  void dispose() {
-    _emailController.dispose();
-    super.dispose();
+  Future<void> _confirmOrder(BuildContext context, List<CartLine> lines, double subtotal) async {
+    try {
+      // ALWAYS validate phone number and car plate (for car identification)
+      if (_checkoutData.phone.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please enter your phone number to continue'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+      if (_checkoutData.carPlate.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please enter your car plate to continue'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Get loyalty settings to check if we need to process loyalty
+      final loyaltySettings = await ref.read(loyaltyServiceProvider).getLoyaltySettings();
+
+      // Create order items
+      final items = lines
+          .map((l) => OrderItem(
+                productId: l.sweet.id,
+                name: l.sweet.name,
+                price: l.sweet.price,
+                qty: l.qty,
+                note: l.note,
+              ))
+          .toList();
+
+      final cfg = ref.read(appConfigProvider);
+      final table = cfg.qr.table;
+
+      // Create order (ALWAYS include phone and car plate for identification)
+      final service = ref.read(orderServiceProvider);
+      final order = await service.createOrder(
+        items: items,
+        table: table,
+        customerPhone: _checkoutData.phone,
+        customerCarPlate: _checkoutData.carPlate,
+        loyaltyDiscount: loyaltySettings.enabled ? _checkoutData.discount : null,
+        loyaltyPointsUsed: loyaltySettings.enabled ? _checkoutData.pointsToUse : null,
+      );
+
+      // Redeem points (if using points for discount)
+      if (loyaltySettings.enabled && _checkoutData.pointsToUse > 0 && _checkoutData.phone.isNotEmpty) {
+        final loyaltyService = ref.read(loyaltyServiceProvider);
+        try {
+          await loyaltyService.redeemPoints(
+            phone: _checkoutData.phone,
+            pointsToRedeem: _checkoutData.pointsToUse,
+            orderId: order.orderId,
+          );
+        } catch (e) {
+          debugPrint('[Cart] Failed to redeem points: $e');
+          // Continue anyway - order is already created
+        }
+      }
+
+      // NOTE: Points are awarded when order is marked as 'served' in merchant dashboard
+
+      // Clear the cart after successful order
+      ref.read(cartControllerProvider.notifier).clear();
+
+      // Navigate to order status
+      if (context.mounted) {
+        Navigator.of(context).maybePop();
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => OrderStatusPage(orderId: order.orderId),
+          ),
+        );
+      }
+
+      widget.onConfirm?.call();
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error creating order: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -105,20 +207,33 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         final subtotal = lines.fold<double>(0.0, (sum, l) => sum + l.lineTotal);
         final onSurface = Theme.of(context).colorScheme.onSurface;
 
-        // Keep the "always disabled" visual style
-        final Color _fgDisabled = onSurface.withOpacity(0.38);
-        final Color _bgDisabled = onSurface.withOpacity(0.12);
-        final ButtonStyle _confirmStyle = ButtonStyle(
-          foregroundColor: MaterialStatePropertyAll(_fgDisabled),
-          backgroundColor: MaterialStatePropertyAll(_bgDisabled),
-          overlayColor: const MaterialStatePropertyAll(Colors.transparent),
-          shadowColor: const MaterialStatePropertyAll(Colors.transparent),
-          elevation: const MaterialStatePropertyAll(0),
-          minimumSize: const MaterialStatePropertyAll(Size.fromHeight(48)),
-          shape: MaterialStatePropertyAll(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
+        // Check if all required fields are filled
+        final isReadyToConfirm = _checkoutData.phone.isNotEmpty &&
+                                 _checkoutData.carPlate.isNotEmpty &&
+                                 lines.isNotEmpty;
+
+        // Dynamic button style - green when ready, gray when not
+        final ButtonStyle _confirmStyle = isReadyToConfirm
+            ? ButtonStyle(
+                foregroundColor: const MaterialStatePropertyAll(Colors.white),
+                backgroundColor: const MaterialStatePropertyAll(Color(0xFF22C55E)), // Green
+                elevation: const MaterialStatePropertyAll(2),
+                minimumSize: const MaterialStatePropertyAll(Size.fromHeight(48)),
+                shape: MaterialStatePropertyAll(
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              )
+            : ButtonStyle(
+                foregroundColor: MaterialStatePropertyAll(onSurface.withOpacity(0.38)),
+                backgroundColor: MaterialStatePropertyAll(onSurface.withOpacity(0.12)),
+                overlayColor: const MaterialStatePropertyAll(Colors.transparent),
+                shadowColor: const MaterialStatePropertyAll(Colors.transparent),
+                elevation: const MaterialStatePropertyAll(0),
+                minimumSize: const MaterialStatePropertyAll(Size.fromHeight(48)),
+                shape: MaterialStatePropertyAll(
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              );
 
         return SafeArea(
           top: false,
@@ -176,6 +291,18 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                   ),
 
                 const SizedBox(height: 16),
+
+                // Loyalty checkout widget
+                LoyaltyCheckoutWidget(
+                  orderTotal: subtotal,
+                  onCheckoutDataChanged: (data) {
+                    setState(() => _checkoutData = data);
+                  },
+                ),
+
+                const SizedBox(height: 16),
+
+                // Subtotal row
                 Row(
                   children: [
                     const Text(
@@ -193,102 +320,57 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
 
-                // Email field for order confirmation
-                TextField(
-                  controller: _emailController,
-                  decoration: InputDecoration(
-                    labelText: 'Email (optional)',
-                    hintText: 'Get order confirmation via email',
-                    prefixIcon: const Icon(Icons.email_outlined),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    filled: true,
+                // Discount row (if using points)
+                if (_checkoutData.discount > 0) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Text(
+                        'Points Discount',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.blue),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '- ${_checkoutData.discount.toStringAsFixed(3)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                          color: Colors.blue,
+                        ),
+                      ),
+                    ],
                   ),
-                  keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.done,
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 8),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Text(
+                        'Final Total',
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                      ),
+                      const Spacer(),
+                      Text(
+                        (subtotal - _checkoutData.discount).toStringAsFixed(3),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 20,
+                          color: onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+
+                const SizedBox(height: 12),
 
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: lines.isEmpty
-                        ? null
-                        : () async {
-                            // One OrderItem per line, preserve note
-                            final items = lines
-                                .map((l) => OrderItem(
-                                      productId: l.sweet.id,
-                                      name: l.sweet.name,
-                                      price: l.sweet.price,
-                                      qty: l.qty,
-                                      note: l.note, // keep per-line note
-                                    ))
-                                .toList();
-
-                            final cfg = ref.read(appConfigProvider);
-                            final table = cfg.qr.table;
-
-                            final service = ref.read(orderServiceProvider);
-                            final order = await service.createOrder(
-                              items: items,
-                              table: table,
-                            );
-
-                            // Send confirmation email if email is provided
-                            final emailAddress = _emailController.text.trim();
-                            if (emailAddress.isNotEmpty && emailAddress.contains('@')) {
-                              try {
-                                // Get merchant name
-                                final cfg = ref.read(appConfigProvider);
-                                final brandingDoc = await FirebaseFirestore.instance
-                                    .doc('merchants/${cfg.merchantId}/branches/${cfg.branchId}/config/branding')
-                                    .get();
-                                final merchantName = brandingDoc.data()?['title'] as String? ?? 'Restaurant';
-
-                                // Get order number from Firestore (will be set by backend)
-                                final orderDoc = await FirebaseFirestore.instance
-                                    .doc('merchants/${cfg.merchantId}/branches/${cfg.branchId}/orders/${order.orderId}')
-                                    .get();
-                                final orderNo = orderDoc.data()?['orderNo'] as String? ?? order.orderId.substring(0, 8);
-
-                                // Send confirmation email
-                                await email.EmailService.sendCustomerConfirmation(
-                                  orderNo: orderNo,
-                                  table: table,
-                                  items: items.map((item) => email.OrderItem(
-                                    name: item.name,
-                                    qty: item.qty,
-                                    price: item.price,
-                                    note: item.note,
-                                  )).toList(),
-                                  subtotal: subtotal,
-                                  timestamp: DateFormat('MM/dd/yyyy hh:mm a').format(DateTime.now()),
-                                  merchantName: merchantName,
-                                  estimatedTime: '15-20 minutes',
-                                  toEmail: emailAddress,
-                                );
-                              } catch (e) {
-                                // Silently fail - order was created successfully
-                                debugPrint('[CartSheet] Failed to send confirmation email: $e');
-                              }
-                            }
-
-                            // ignore: use_build_context_synchronously
-                            Navigator.of(context).maybePop();
-                            // ignore: use_build_context_synchronously
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    OrderStatusPage(orderId: order.orderId),
-                              ),
-                            );
-
-                            widget.onConfirm?.call();
-                          },
+                    onPressed: isReadyToConfirm
+                        ? () async => _confirmOrder(context, lines, subtotal)
+                        : null,
                     icon: const Icon(Icons.check_circle_outline),
                     label: const Text('Confirm Order'),
                     style: _confirmStyle,

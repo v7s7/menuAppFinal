@@ -33,6 +33,12 @@ class Order {
   final double subtotal;
   final String? table; // from QR later
 
+  // Loyalty fields
+  final String? customerPhone; // Customer phone number for loyalty
+  final String? customerCarPlate; // Customer car plate
+  final double? loyaltyDiscount; // Discount from redeemed points
+  final int? loyaltyPointsUsed; // Points redeemed for this order
+
   const Order({
     required this.orderId,
     required this.orderNo,
@@ -41,6 +47,10 @@ class Order {
     required this.items,
     required this.subtotal,
     this.table,
+    this.customerPhone,
+    this.customerCarPlate,
+    this.loyaltyDiscount,
+    this.loyaltyPointsUsed,
   });
 
   Order copyWith({OrderStatus? status}) {
@@ -52,6 +62,10 @@ class Order {
       items: items,
       subtotal: subtotal,
       table: table,
+      customerPhone: customerPhone,
+      customerCarPlate: customerCarPlate,
+      loyaltyDiscount: loyaltyDiscount,
+      loyaltyPointsUsed: loyaltyPointsUsed,
     );
   }
 }

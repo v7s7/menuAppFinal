@@ -29,6 +29,12 @@ dependencies:
   # Currency formatting (3dp BHD)
   intl: ^0.19.0
 
+  # Charts for analytics
+  fl_chart: ^0.69.0
+
+  # Audio for order alerts
+  just_audio: ^0.9.40
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -42,3 +48,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/sweets/
+    - assets/sounds/

@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:sweets_app/features/categories/screens/category_admin_page.dart';
 import '../../core/branding/branding_admin_page.dart';
+import '../../features/loyalty/screens/loyalty_settings_page.dart';
 
 /// Merchant product manager (Cloudinary + Firestore).
 /// Override at build time:
@@ -63,6 +64,13 @@ class ProductsScreen extends StatelessWidget {
           appBar: AppBar(
             title: const Text('Products'),
             actions: [
+              IconButton(
+                tooltip: 'Loyalty Program',
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const LoyaltySettingsPage()),
+                ),
+                icon: const Icon(Icons.card_giftcard_outlined),
+              ),
               IconButton(
                 tooltip: 'Branding',
                 onPressed: () => Navigator.of(context).push(

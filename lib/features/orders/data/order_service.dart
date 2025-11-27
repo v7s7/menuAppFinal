@@ -38,6 +38,10 @@ class OrderService {
   Future<om.Order> createOrder({
     required List<om.OrderItem> items,
     String? table,
+    String? customerPhone,
+    String? customerCarPlate,
+    double? loyaltyDiscount,
+    int? loyaltyPointsUsed,
   }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
@@ -69,33 +73,63 @@ class OrderService {
           .collection('orders')
           .doc();
 
-  await doc.set({
-      'merchantId': _m,
-      'branchId': _b,
-      'userId': uid,
-      'status': 'pending',
-      'items': items.map((e) => {
-            'productId': e.productId,
-            'name': e.name,
-            'price': e.price,
-            'qty': e.qty,
-            if ((e.note ?? '').trim().isNotEmpty) 'note': e.note!.trim(), // NEW
-          }).toList(),
-      'subtotal': subtotal,
-      'currency': 'BHD',
-      'table': table,
-      'createdAt': FieldValue.serverTimestamp(),
-      // 'orderNo' optional
-    });
+      // Get next order number using transaction
+      final counterDoc = _fs
+          .collection('merchants')
+          .doc(_m)
+          .collection('branches')
+          .doc(_b)
+          .collection('counters')
+          .doc('orders');
+
+      final String orderNo = await _fs.runTransaction<String>((transaction) async {
+        final counterSnap = await transaction.get(counterDoc);
+        final currentCount = counterSnap.exists ? (counterSnap.data()?['count'] ?? 0) : 0;
+        final nextCount = currentCount + 1;
+
+        // Update counter
+        transaction.set(counterDoc, {'count': nextCount}, SetOptions(merge: true));
+
+        // Format as ORD-001, ORD-002, etc.
+        return 'ORD-${nextCount.toString().padLeft(3, '0')}';
+      });
+
+      await doc.set({
+        'merchantId': _m,
+        'branchId': _b,
+        'userId': uid,
+        'status': 'pending',
+        'items': items.map((e) => {
+              'productId': e.productId,
+              'name': e.name,
+              'price': e.price,
+              'qty': e.qty,
+              if ((e.note ?? '').trim().isNotEmpty) 'note': e.note!.trim(),
+            }).toList(),
+        'subtotal': subtotal,
+        'currency': 'BHD',
+        'table': table,
+        'createdAt': FieldValue.serverTimestamp(),
+        'orderNo': orderNo, // Add generated order number
+        // Loyalty fields (optional)
+        if (customerPhone != null) 'customerPhone': customerPhone,
+        if (customerCarPlate != null) 'customerCarPlate': customerCarPlate,
+        if (loyaltyDiscount != null) 'loyaltyDiscount': loyaltyDiscount,
+        if (loyaltyPointsUsed != null) 'loyaltyPointsUsed': loyaltyPointsUsed,
+      });
 
     return om.Order(
       orderId: doc.id,
-      orderNo: '—',
+      orderNo: orderNo,
       status: om.OrderStatus.pending,
       createdAt: DateTime.now(),
       items: items,
       subtotal: subtotal,
       table: table,
+      customerPhone: customerPhone,
+      customerCarPlate: customerCarPlate,
+      loyaltyDiscount: loyaltyDiscount,
+      loyaltyPointsUsed: loyaltyPointsUsed,
     );
     } catch (e, st) {
       if (kDebugMode) {
@@ -135,6 +169,10 @@ class OrderService {
         items: itemsList,
         subtotal: double.parse(subtotalNum.toStringAsFixed(3)),
         table: _asNullableString(data['table']),
+        customerPhone: _asNullableString(data['customerPhone']),
+        customerCarPlate: _asNullableString(data['customerCarPlate']),
+        loyaltyDiscount: data['loyaltyDiscount'] != null ? _asNum(data['loyaltyDiscount']).toDouble() : null,
+        loyaltyPointsUsed: data['loyaltyPointsUsed'] != null ? _asNum(data['loyaltyPointsUsed']).toInt() : null,
       );
     });
   }

@@ -20,8 +20,7 @@ import '../core/services/order_notification_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/products_screen.dart';
 import 'screens/orders_admin_page.dart';
-import 'screens/reports_page.dart';
-import 'screens/settings_page.dart';
+import '../features/analytics/screens/analytics_dashboard_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -177,7 +176,7 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
     final pages = <Widget>[
       ProductsScreen(merchantId: widget.merchantId, branchId: widget.branchId),
       const OrdersAdminPage(),
-      const ReportsPage(),
+      const AnalyticsDashboardPage(),
     ];
 
     return Scaffold(
@@ -217,7 +216,7 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
           NavigationDestination(
             icon: Icon(Icons.analytics_outlined),
             selectedIcon: Icon(Icons.analytics),
-            label: 'Reports',
+            label: 'Analytics',
           ),
         ],
       ),

@@ -43,9 +43,9 @@ service cloud.firestore {
         
         // -------------------- MENU ITEMS --------------------
         match /menuItems/{itemId} {
-          // PUBLIC READ: Anyone can see active items
-          allow read: if resource == null || resource.data.isActive == true;
-          
+          // PUBLIC READ: Anyone can see menu items (app filters by isActive on client side)
+          allow read: if true;
+
           // STAFF WRITE: Only staff can create/update/delete
           allow create: if isStaff(merchantId, branchId) &&
             request.resource.data.merchantId == merchantId &&
@@ -55,11 +55,20 @@ service cloud.firestore {
             request.resource.data.price >= 0 &&
             request.resource.data.name is string &&
             request.resource.data.name.size() > 0;
-          
+
           allow update: if isStaff(merchantId, branchId);
           allow delete: if isStaff(merchantId, branchId);
         }
-        
+
+        // -------------------- CATEGORIES --------------------
+        match /categories/{categoryId} {
+          // PUBLIC READ: Anyone can see categories
+          allow read: if true;
+
+          // STAFF WRITE: Only staff can create/update/delete
+          allow create, update, delete: if isStaff(merchantId, branchId);
+        }
+
         // -------------------- ORDERS --------------------
         match /orders/{orderId} {
           // CREATE: Any signed-in user can place order
@@ -80,11 +89,9 @@ service cloud.firestore {
             (resource.data.userId == request.auth.uid ||
              isStaff(merchantId, branchId));
           
-          // UPDATE: Only staff can update (change status)
-          allow update: if isStaff(merchantId, branchId) &&
-            request.resource.data.diff(resource.data)
-              .affectedKeys()
-              .hasOnly(['status', 'updatedAt']);
+          // UPDATE: Only staff can update (change status and timestamps)
+          // Allow timestamp fields: acceptedAt, preparingAt, readyAt, servedAt, cancelledAt
+          allow update: if isStaff(merchantId, branchId);
           
           // No deletes
           allow delete: if false;
@@ -99,13 +106,76 @@ service cloud.firestore {
           allow write: if isOwner(merchantId, branchId);
         }
         
-        // -------------------- CONFIG (BRANDING) --------------------
+        // -------------------- CONFIG (BRANDING & LOYALTY) --------------------
         match /config/{docId} {
-          // PUBLIC READ: Anyone can see branding
+          // PUBLIC READ: Anyone can see branding & loyalty settings
           allow read: if true;
-          
-          // STAFF WRITE: Only staff can update branding
+
+          // STAFF WRITE: Only staff can update branding & loyalty
           allow write: if isStaff(merchantId, branchId);
+        }
+
+        // -------------------- CUSTOMERS (LOYALTY) --------------------
+        match /customers/{phone} {
+          // READ: Anyone signed in can read customer profiles (for points display)
+          // Staff can read all customer profiles
+          allow read: if isSignedIn();
+
+          // CREATE: Allow creating customer profiles during checkout
+          // carPlate is required (for restaurant to identify which car to serve)
+          allow create: if isSignedIn() &&
+            request.resource.data.phone == phone &&
+            request.resource.data.carPlate is string &&
+            request.resource.data.carPlate.size() > 0 &&
+            request.resource.data.points is int &&
+            request.resource.data.points >= 0 &&
+            request.resource.data.totalSpent is number &&
+            request.resource.data.totalSpent >= 0 &&
+            request.resource.data.orderCount is int &&
+            request.resource.data.orderCount >= 0 &&
+            // lastOrderAt is optional
+            (!request.resource.data.keys().hasAny(['lastOrderAt']) || request.resource.data.lastOrderAt is timestamp || request.resource.data.lastOrderAt == null);
+
+          // UPDATE: Allow updating customer profiles (points, spending, etc.)
+          allow update: if isSignedIn() &&
+            request.resource.data.phone == resource.data.phone &&  // Can't change phone
+            request.resource.data.carPlate is string &&
+            request.resource.data.carPlate.size() > 0 &&
+            request.resource.data.points is int &&
+            request.resource.data.points >= 0 &&
+            request.resource.data.totalSpent is number &&
+            request.resource.data.totalSpent >= resource.data.totalSpent &&  // Can't decrease
+            request.resource.data.orderCount is int &&
+            request.resource.data.orderCount >= resource.data.orderCount &&  // Can't decrease
+            // lastOrderAt is optional
+            (!request.resource.data.keys().hasAny(['lastOrderAt']) || request.resource.data.lastOrderAt is timestamp || request.resource.data.lastOrderAt == null);
+
+          // No deletes
+          allow delete: if false;
+        }
+
+        // -------------------- POINTS TRANSACTIONS (AUDIT TRAIL) --------------------
+        match /pointsTransactions/{transactionId} {
+          // READ: Staff can view all transactions
+          allow read: if isStaff(merchantId, branchId);
+
+          // CREATE: Allow system writes for audit trail
+          allow create: if isSignedIn() &&
+            request.resource.data.phone is string &&
+            request.resource.data.type in ['earned', 'redeemed'] &&
+            request.resource.data.points is int;
+
+          // No updates or deletes (immutable audit log)
+          allow update, delete: if false;
+        }
+
+        // -------------------- COUNTERS (ORDER NUMBERING) --------------------
+        match /counters/{counterId} {
+          // READ: Anyone signed in can read counters
+          allow read: if isSignedIn();
+
+          // WRITE: Anyone signed in can update counters (for order number generation)
+          allow write: if isSignedIn();
         }
       }
     }
