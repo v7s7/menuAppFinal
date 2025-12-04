@@ -10,7 +10,7 @@ class EmailConfig {
   /// 2. Copy your worker URL from Cloudflare dashboard
   /// 3. Replace the URL below
   static const String workerUrl =
-      'YOUR_WORKER_URL_HERE'; // Example: https://sweetweb-email-service.abc123.workers.dev
+      'https://sweets.alkubaisi1818.workers.dev';
 
   /// Check if email service is configured
   static bool get isConfigured =>
