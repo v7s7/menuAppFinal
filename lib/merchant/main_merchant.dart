@@ -184,6 +184,7 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
       appBar: _i == 2
           ? null
           : AppBar(
+              automaticallyImplyLeading: false,
               title: Text(_i == 0 ? 'Products' : 'Orders'),
               actions: [
                 IconButton(
