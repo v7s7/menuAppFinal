@@ -124,52 +124,63 @@ class _MerchantShell extends ConsumerStatefulWidget {
 class _MerchantShellState extends ConsumerState<_MerchantShell> {
   int _i = 0;
   final _notificationService = OrderNotificationService();
+  StreamSubscription<DocumentSnapshot>? _settingsSubscription;
 
   @override
   void initState() {
     super.initState();
-    _initializeNotifications();
+    _watchSettingsAndStartNotifications();
   }
 
   @override
   void dispose() {
     _notificationService.stopListening();
+    _settingsSubscription?.cancel();
     super.dispose();
   }
 
-  Future<void> _initializeNotifications() async {
-    try {
-      // Load settings from Firestore
-      final settingsDoc = await FirebaseFirestore.instance
-          .doc('merchants/${widget.merchantId}/branches/${widget.branchId}/config/settings')
-          .get();
+  /// Watch settings document and restart notification service whenever it changes
+  void _watchSettingsAndStartNotifications() {
+    final settingsRef = FirebaseFirestore.instance
+        .doc('merchants/${widget.merchantId}/branches/${widget.branchId}/config/settings');
 
-      final enabled = settingsDoc.data()?['emailNotifications']?['enabled'] as bool? ?? false;
-      final email = settingsDoc.data()?['emailNotifications']?['email'] as String?;
+    _settingsSubscription = settingsRef.snapshots().listen((settingsDoc) async {
+      try {
+        final enabled = settingsDoc.data()?['emailNotifications']?['enabled'] as bool? ?? false;
+        final email = settingsDoc.data()?['emailNotifications']?['email'] as String?;
 
-      if (!enabled || email == null || email.isEmpty) {
-        return;
+        print('[MerchantShell] Settings changed: enabled=$enabled, email=$email');
+
+        // Stop existing service first
+        _notificationService.stopListening();
+
+        if (!enabled || email == null || email.isEmpty) {
+          print('[MerchantShell] Email notifications disabled or email not configured');
+          return;
+        }
+
+        // Load merchant name
+        final brandingDoc = await FirebaseFirestore.instance
+            .doc('merchants/${widget.merchantId}/branches/${widget.branchId}/config/branding')
+            .get();
+        final merchantName = brandingDoc.data()?['title'] as String? ?? 'Your Store';
+
+        // Start listening for new orders
+        _notificationService.startListening(
+          merchantId: widget.merchantId,
+          branchId: widget.branchId,
+          merchantEmail: email,
+          merchantName: merchantName,
+          enabled: enabled,
+        );
+
+        print('[MerchantShell] ✅ Email notifications active for $email');
+      } catch (e) {
+        print('[MerchantShell] ❌ Failed to start notifications: $e');
       }
-
-      // Load merchant name
-      final brandingDoc = await FirebaseFirestore.instance
-          .doc('merchants/${widget.merchantId}/branches/${widget.branchId}/config/branding')
-          .get();
-      final merchantName = brandingDoc.data()?['title'] as String? ?? 'Your Store';
-
-      // Start listening
-      _notificationService.startListening(
-        merchantId: widget.merchantId,
-        branchId: widget.branchId,
-        merchantEmail: email,
-        merchantName: merchantName,
-        enabled: enabled,
-      );
-
-      print('[MerchantShell] Email notifications started for $email');
-    } catch (e) {
-      print('[MerchantShell] Failed to initialize notifications: $e');
-    }
+    }, onError: (error) {
+      print('[MerchantShell] ❌ Settings stream error: $error');
+    });
   }
 
   @override
