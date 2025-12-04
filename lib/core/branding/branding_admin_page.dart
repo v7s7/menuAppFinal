@@ -98,6 +98,11 @@ class _BrandingAdminPageState extends ConsumerState<BrandingAdminPage> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back',
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         title: const Text('Branding Settings'),
       ),
       body: ListView(

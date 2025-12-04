@@ -52,6 +52,11 @@ class _LoyaltySettingsPageState extends ConsumerState<LoyaltySettingsPage> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back',
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         title: const Text('Loyalty Program Settings'),
         actions: [
           IconButton(

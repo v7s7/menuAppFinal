@@ -25,6 +25,19 @@ class _CategoryAdminPageState extends ConsumerState<CategoryAdminPage> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back',
+          onPressed: () {
+            if (_activeParent != null) {
+              // If viewing subcategories, go back to parent categories
+              setState(() => _activeParent = null);
+            } else {
+              // If viewing top-level categories, go back to Products page
+              Navigator.of(context).pop();
+            }
+          },
+        ),
         title: Text(
           _activeParent == null ? 'Categories' : 'Subcategories',
           style: TextStyle(color: onSurface, fontWeight: FontWeight.w800),
