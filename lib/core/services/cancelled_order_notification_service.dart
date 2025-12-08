@@ -29,17 +29,23 @@ class CancelledOrderNotificationService {
     _subscription = FirebaseFirestore.instance
         .collection('merchants/$merchantId/branches/$branchId/orders')
         .where('status', isEqualTo: 'cancelled')
-        .where('cancelledAt', isGreaterThan: _serviceStartTime)
-        .orderBy('cancelledAt', descending: true)
         .snapshots()
         .listen((snapshot) {
       for (final change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added) {
           final orderId = change.doc.id;
+          final orderData = change.doc.data()!;
 
           // Skip if already processed
           if (_processedOrders.contains(orderId)) {
             print('[CancelledOrderNotificationService] Skipping already processed order: $orderId');
+            continue;
+          }
+
+          // Only process orders cancelled AFTER service started
+          final cancelledAt = orderData['cancelledAt'] as Timestamp?;
+          if (cancelledAt == null || cancelledAt.toDate().isBefore(_serviceStartTime!)) {
+            print('[CancelledOrderNotificationService] Skipping old cancelled order: $orderId');
             continue;
           }
 
@@ -48,7 +54,7 @@ class CancelledOrderNotificationService {
           // Send cancellation notification
           _sendCancellationNotification(
             orderId: orderId,
-            orderData: change.doc.data()!,
+            orderData: orderData,
             merchantName: merchantName,
           );
         }
