@@ -12,6 +12,10 @@ class EmailConfig {
   static const String workerUrl =
       'https://sweets.alkubaisi1818.workers.dev';
 
+  /// Default email for all notifications
+  /// All order notifications will be sent to this email
+  static const String defaultEmail = 'alkubaisi1818@gmail.com';
+
   /// Check if email service is configured
   static bool get isConfigured =>
       workerUrl != 'YOUR_WORKER_URL_HERE' && workerUrl.isNotEmpty;

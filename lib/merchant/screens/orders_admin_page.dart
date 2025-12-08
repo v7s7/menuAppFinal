@@ -84,6 +84,9 @@ class _AdminOrder {
   final double? loyaltyDiscount;
   final int? loyaltyPointsUsed;
 
+  // Cancellation
+  final String? cancellationReason;
+
   _AdminOrder({
     required this.id,
     required this.orderNo,
@@ -96,6 +99,7 @@ class _AdminOrder {
     this.customerCarPlate,
     this.loyaltyDiscount,
     this.loyaltyPointsUsed,
+    this.cancellationReason,
   });
 }
 
@@ -181,6 +185,7 @@ final ordersStreamProvider =
         customerCarPlate: (data['customerCarPlate'] as String?)?.trim(),
         loyaltyDiscount: loyaltyDiscount,
         loyaltyPointsUsed: loyaltyPointsUsed,
+        cancellationReason: (data['cancellationReason'] as String?)?.trim(),
       );
     }).toList();
   });
@@ -1060,7 +1065,7 @@ class _QuickActionsState extends ConsumerState<_QuickActions> {
       children: [
         // Cancel button (small, subtle)
         OutlinedButton.icon(
-          onPressed: _busy ? null : () => _setStatus(om.OrderStatus.cancelled),
+          onPressed: _busy ? null : () => _showCancelDialog(),
           icon: const Icon(Icons.close, size: 16),
           label: const Text('Cancel'),
           style: OutlinedButton.styleFrom(
@@ -1169,7 +1174,64 @@ class _QuickActionsState extends ConsumerState<_QuickActions> {
     }
   }
 
-  Future<void> _setStatus(om.OrderStatus newStatus) async {
+  /// Show dialog to enter cancellation reason
+  Future<void> _showCancelDialog() async {
+    final reasonController = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Order'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Are you sure you want to cancel order ${widget.order.orderNo}?',
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(
+                labelText: 'Cancellation Reason (Optional)',
+                hintText: 'e.g., Out of stock, Customer request, etc.',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+              textCapitalization: TextCapitalization.sentences,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Back'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Cancel Order'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final reason = reasonController.text.trim();
+      await _setStatus(
+        om.OrderStatus.cancelled,
+        cancellationReason: reason.isEmpty ? null : reason,
+      );
+    }
+
+    reasonController.dispose();
+  }
+
+  Future<void> _setStatus(om.OrderStatus newStatus, {String? cancellationReason}) async {
     final cur = widget.order.status;
     if (newStatus == om.OrderStatus.pending && cur != om.OrderStatus.pending) {
       return;
@@ -1204,6 +1266,9 @@ class _QuickActionsState extends ConsumerState<_QuickActions> {
           break;
         case om.OrderStatus.cancelled:
           payload['cancelledAt'] = FieldValue.serverTimestamp();
+          if (cancellationReason != null) {
+            payload['cancellationReason'] = cancellationReason;
+          }
           break;
         case om.OrderStatus.pending:
         case om.OrderStatus.accepted:

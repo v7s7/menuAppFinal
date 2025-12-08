@@ -4,14 +4,14 @@ import 'package:intl/intl.dart';
 import 'email_service.dart';
 import '../config/email_config.dart';
 
-/// Service to listen for new orders and send email notifications
-class OrderNotificationService {
+/// Service to listen for cancelled orders and send email notifications
+class CancelledOrderNotificationService {
   StreamSubscription<QuerySnapshot>? _subscription;
   final Set<String> _processedOrders = {};
   DateTime? _serviceStartTime;
 
-  /// Start listening for new orders
-  /// Email notifications will ALWAYS be sent to EmailConfig.defaultEmail
+  /// Start listening for cancelled orders
+  /// Email notifications will be sent to EmailConfig.defaultEmail
   void startListening({
     required String merchantId,
     required String branchId,
@@ -20,17 +20,17 @@ class OrderNotificationService {
     // Cancel existing subscription
     stopListening();
 
-    // Record when service starts - only listen for orders created AFTER this time
-    // This prevents sending emails for old orders and avoids rate limiting
+    // Record when service starts - only listen for orders cancelled AFTER this time
+    // This prevents sending emails for old cancelled orders
     _serviceStartTime = DateTime.now();
-    print('[OrderNotificationService] Started listening for orders created after ${_serviceStartTime}');
-    print('[OrderNotificationService] All emails will be sent to: ${EmailConfig.defaultEmail}');
+    print('[CancelledOrderNotificationService] Started listening for cancelled orders after ${_serviceStartTime}');
+    print('[CancelledOrderNotificationService] All emails will be sent to: ${EmailConfig.defaultEmail}');
 
     _subscription = FirebaseFirestore.instance
         .collection('merchants/$merchantId/branches/$branchId/orders')
-        .where('status', isEqualTo: 'pending')
-        .where('createdAt', isGreaterThan: _serviceStartTime)
-        .orderBy('createdAt', descending: true)
+        .where('status', isEqualTo: 'cancelled')
+        .where('cancelledAt', isGreaterThan: _serviceStartTime)
+        .orderBy('cancelledAt', descending: true)
         .snapshots()
         .listen((snapshot) {
       for (final change in snapshot.docChanges) {
@@ -39,14 +39,14 @@ class OrderNotificationService {
 
           // Skip if already processed
           if (_processedOrders.contains(orderId)) {
-            print('[OrderNotificationService] Skipping already processed order: $orderId');
+            print('[CancelledOrderNotificationService] Skipping already processed order: $orderId');
             continue;
           }
 
           _processedOrders.add(orderId);
 
-          // Send notification with delay to respect rate limits (2 req/sec)
-          _sendOrderNotification(
+          // Send cancellation notification
+          _sendCancellationNotification(
             orderId: orderId,
             orderData: change.doc.data()!,
             merchantName: merchantName,
@@ -56,16 +56,16 @@ class OrderNotificationService {
     });
   }
 
-  /// Stop listening for new orders
+  /// Stop listening for cancelled orders
   void stopListening() {
     _subscription?.cancel();
     _subscription = null;
     _serviceStartTime = null;
   }
 
-  /// Send email notification for a new order
+  /// Send email notification for a cancelled order
   /// Always sends to EmailConfig.defaultEmail
-  Future<void> _sendOrderNotification({
+  Future<void> _sendCancellationNotification({
     required String orderId,
     required Map<String, dynamic> orderData,
     required String merchantName,
@@ -74,6 +74,7 @@ class OrderNotificationService {
       final orderNo = orderData['orderNo'] as String? ?? orderId;
       final table = orderData['table'] as String?;
       final subtotal = (orderData['subtotal'] as num?)?.toDouble() ?? 0.0;
+      final cancellationReason = orderData['cancellationReason'] as String?;
 
       final items = (orderData['items'] as List<dynamic>?)
               ?.map((item) => OrderItem(
@@ -85,12 +86,12 @@ class OrderNotificationService {
               .toList() ??
           [];
 
-      final createdAt = orderData['createdAt'] as Timestamp?;
-      final timestamp = createdAt != null
-          ? DateFormat('MM/dd/yyyy hh:mm a').format(createdAt.toDate())
+      final cancelledAt = orderData['cancelledAt'] as Timestamp?;
+      final timestamp = cancelledAt != null
+          ? DateFormat('MM/dd/yyyy hh:mm a').format(cancelledAt.toDate())
           : DateFormat('MM/dd/yyyy hh:mm a').format(DateTime.now());
 
-      final result = await EmailService.sendOrderNotification(
+      final result = await EmailService.sendOrderCancellation(
         orderNo: orderNo,
         table: table,
         items: items,
@@ -99,21 +100,16 @@ class OrderNotificationService {
         merchantName: merchantName,
         dashboardUrl: 'https://sweetweb.web.app/merchant',
         toEmail: EmailConfig.defaultEmail, // ALWAYS use default email
+        cancellationReason: cancellationReason,
       );
 
       if (result.success) {
-        print('[OrderNotificationService] ✅ Email sent for order $orderNo to ${EmailConfig.defaultEmail}: ${result.messageId}');
+        print('[CancelledOrderNotificationService] ✅ Cancellation email sent for order $orderNo to ${EmailConfig.defaultEmail}: ${result.messageId}');
       } else {
-        // Check if it's a rate limit error
-        final error = result.error ?? '';
-        if (error.contains('Too many requests') || error.contains('rate limit')) {
-          print('[OrderNotificationService] ⚠️ Rate limit reached for order $orderNo. Email will be retried on next order.');
-        } else {
-          print('[OrderNotificationService] ❌ Failed to send email for order $orderNo: ${result.error}');
-        }
+        print('[CancelledOrderNotificationService] ❌ Failed to send cancellation email for order $orderNo: ${result.error}');
       }
     } catch (e) {
-      print('[OrderNotificationService] ❌ Exception sending notification: $e');
+      print('[CancelledOrderNotificationService] ❌ Exception sending cancellation notification: $e');
     }
   }
 

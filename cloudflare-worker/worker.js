@@ -37,6 +37,8 @@ export default {
 
       if (action === 'order-notification') {
         return await sendOrderNotification(data, env.RESEND_API_KEY);
+      } else if (action === 'order-cancellation') {
+        return await sendOrderCancellation(data, env.RESEND_API_KEY);
       } else if (action === 'customer-confirmation') {
         return await sendCustomerConfirmation(data, env.RESEND_API_KEY);
       } else if (action === 'report') {
@@ -73,6 +75,42 @@ async function sendOrderNotification(data, apiKey) {
       from: FROM_EMAIL,
       to: toEmail,
       subject: `🔔 New Order ${orderNo}${table ? ` - Table ${table}` : ''}`,
+      html,
+    }),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    return new Response(
+      JSON.stringify({ success: false, error: result.message || 'Failed to send email' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  return new Response(
+    JSON.stringify({ success: true, messageId: result.id }),
+    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
+
+async function sendOrderCancellation(data, apiKey) {
+  const { orderNo, table, items, subtotal, timestamp, merchantName, dashboardUrl, toEmail, cancellationReason } = data;
+
+  const html = orderCancellationTemplate({
+    orderNo, table, items, subtotal, timestamp, merchantName, dashboardUrl, cancellationReason
+  });
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: FROM_EMAIL,
+      to: toEmail,
+      subject: `❌ Order Cancelled ${orderNo}${table ? ` - Table ${table}` : ''}`,
       html,
     }),
   });
@@ -444,6 +482,93 @@ function customerConfirmationTemplate(data) {
     <div style="padding: 20px 24px; background: #f9fafb; border-radius: 0 0 8px 8px; text-align: center; color: #6b7280; font-size: 12px; border-top: 1px solid #e5e7eb;">
       <p style="margin: 0 0 8px 0;">This is an automated confirmation email from SweetWeb</p>
       <p style="margin: 0; color: #9ca3af;">Please do not reply to this email</p>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}
+
+function orderCancellationTemplate(data) {
+  const itemsHtml = data.items
+    .map(item => `
+      <tr>
+        <td style="padding: 8px; border-bottom: 1px solid #eee;">
+          ${item.name} ${item.qty > 1 ? `(x${item.qty})` : ''}
+          ${item.note ? `<br/><span style="font-size: 12px; color: #666;">Note: ${item.note}</span>` : ''}
+        </td>
+        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">
+          ${item.price.toFixed(3)} BHD
+        </td>
+      </tr>
+    `)
+    .join('');
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5;">
+  <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; padding: 24px; border-radius: 8px 8px 0 0;">
+      <h1 style="margin: 0; font-size: 24px;">❌ Order Cancelled</h1>
+      <p style="margin: 8px 0 0 0; opacity: 0.9;">Order has been cancelled at ${data.merchantName}</p>
+    </div>
+    <div style="padding: 24px;">
+      <div style="background: #fef2f2; padding: 16px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #ef4444;">
+        <h2 style="margin: 0 0 12px 0; font-size: 18px; color: #333;">Order Details</h2>
+        <table style="width: 100%;">
+          <tr>
+            <td style="padding: 4px 0; color: #666;">Order Number:</td>
+            <td style="padding: 4px 0; text-align: right; font-weight: 600; color: #ef4444;">${data.orderNo}</td>
+          </tr>
+          ${data.table ? `
+          <tr>
+            <td style="padding: 4px 0; color: #666;">Table:</td>
+            <td style="padding: 4px 0; text-align: right; font-weight: 600;">${data.table}</td>
+          </tr>
+          ` : ''}
+          <tr>
+            <td style="padding: 4px 0; color: #666;">Cancelled At:</td>
+            <td style="padding: 4px 0; text-align: right;">${data.timestamp}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; color: #666;">Status:</td>
+            <td style="padding: 4px 0; text-align: right;">
+              <span style="background: #fee2e2; color: #991b1b; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">
+                CANCELLED
+              </span>
+            </td>
+          </tr>
+        </table>
+      </div>
+      ${data.cancellationReason ? `
+      <div style="background: #fffbeb; padding: 16px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #f59e0b;">
+        <h3 style="margin: 0 0 8px 0; font-size: 14px; color: #92400e; font-weight: 600;">Cancellation Reason</h3>
+        <p style="margin: 0; color: #78350f; font-size: 14px;">${data.cancellationReason}</p>
+      </div>
+      ` : ''}
+      <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #333;">Items</h3>
+      <table style="width: 100%; border-collapse: collapse;">
+        ${itemsHtml}
+        <tr>
+          <td style="padding: 16px 8px 8px 8px; font-weight: 600; font-size: 16px;">Subtotal</td>
+          <td style="padding: 16px 8px 8px 8px; text-align: right; font-weight: 600; font-size: 16px; color: #ef4444;">
+            ${data.subtotal.toFixed(3)} BHD
+          </td>
+        </tr>
+      </table>
+      <div style="margin-top: 24px; text-align: center;">
+        <a href="${data.dashboardUrl}" style="display: inline-block; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600;">
+          View in Dashboard →
+        </a>
+      </div>
+    </div>
+    <div style="padding: 16px 24px; background: #f8f9fa; border-radius: 0 0 8px 8px; text-align: center; color: #666; font-size: 12px;">
+      <p style="margin: 0;">This is an automated notification from SweetWeb</p>
     </div>
   </div>
 </body>

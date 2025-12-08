@@ -16,6 +16,7 @@ import '../core/config/app_config.dart';
 import '../core/config/slug_routing.dart';
 import '../core/branding/branding_providers.dart';
 import '../core/services/order_notification_service.dart';
+import '../core/services/cancelled_order_notification_service.dart';
 
 // Screens
 import 'screens/login_screen.dart';
@@ -125,6 +126,7 @@ class _MerchantShell extends ConsumerStatefulWidget {
 class _MerchantShellState extends ConsumerState<_MerchantShell> {
   int _i = 0;
   final _notificationService = OrderNotificationService();
+  final _cancelledOrderService = CancelledOrderNotificationService();
   StreamSubscription<DocumentSnapshot>? _settingsSubscription;
 
   @override
@@ -136,52 +138,39 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
   @override
   void dispose() {
     _notificationService.stopListening();
+    _cancelledOrderService.stopListening();
     _settingsSubscription?.cancel();
     super.dispose();
   }
 
-  /// Watch settings document and restart notification service whenever it changes
-  void _watchSettingsAndStartNotifications() {
-    final settingsRef = FirebaseFirestore.instance
-        .doc('merchants/${widget.merchantId}/branches/${widget.branchId}/config/settings');
+  /// Start email notification services (ALWAYS active)
+  void _watchSettingsAndStartNotifications() async {
+    try {
+      // Load merchant name
+      final brandingDoc = await FirebaseFirestore.instance
+          .doc('merchants/${widget.merchantId}/branches/${widget.branchId}/config/branding')
+          .get();
+      final merchantName = brandingDoc.data()?['title'] as String? ?? 'Your Store';
 
-    _settingsSubscription = settingsRef.snapshots().listen((settingsDoc) async {
-      try {
-        final enabled = settingsDoc.data()?['emailNotifications']?['enabled'] as bool? ?? false;
-        final email = settingsDoc.data()?['emailNotifications']?['email'] as String?;
+      // Start listening for new orders - ALWAYS active, sends to default email
+      _notificationService.startListening(
+        merchantId: widget.merchantId,
+        branchId: widget.branchId,
+        merchantName: merchantName,
+      );
 
-        print('[MerchantShell] Settings changed: enabled=$enabled, email=$email');
+      // Start listening for cancelled orders - ALWAYS active, sends to default email
+      _cancelledOrderService.startListening(
+        merchantId: widget.merchantId,
+        branchId: widget.branchId,
+        merchantName: merchantName,
+      );
 
-        // Stop existing service first
-        _notificationService.stopListening();
-
-        if (!enabled || email == null || email.isEmpty) {
-          print('[MerchantShell] Email notifications disabled or email not configured');
-          return;
-        }
-
-        // Load merchant name
-        final brandingDoc = await FirebaseFirestore.instance
-            .doc('merchants/${widget.merchantId}/branches/${widget.branchId}/config/branding')
-            .get();
-        final merchantName = brandingDoc.data()?['title'] as String? ?? 'Your Store';
-
-        // Start listening for new orders
-        _notificationService.startListening(
-          merchantId: widget.merchantId,
-          branchId: widget.branchId,
-          merchantEmail: email,
-          merchantName: merchantName,
-          enabled: enabled,
-        );
-
-        print('[MerchantShell] ✅ Email notifications active for $email');
-      } catch (e) {
-        print('[MerchantShell] ❌ Failed to start notifications: $e');
-      }
-    }, onError: (error) {
-      print('[MerchantShell] ❌ Settings stream error: $error');
-    });
+      print('[MerchantShell] ✅ Email notifications ALWAYS active - sending to default email');
+      print('[MerchantShell] ✅ Cancelled order notifications ALWAYS active');
+    } catch (e) {
+      print('[MerchantShell] ❌ Failed to start notifications: $e');
+    }
   }
 
   @override

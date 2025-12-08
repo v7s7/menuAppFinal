@@ -173,6 +173,7 @@ class OrderService {
         customerCarPlate: _asNullableString(data['customerCarPlate']),
         loyaltyDiscount: data['loyaltyDiscount'] != null ? _asNum(data['loyaltyDiscount']).toDouble() : null,
         loyaltyPointsUsed: data['loyaltyPointsUsed'] != null ? _asNum(data['loyaltyPointsUsed']).toInt() : null,
+        cancellationReason: _asNullableString(data['cancellationReason']),
       );
     });
   }

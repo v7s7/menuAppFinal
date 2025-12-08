@@ -39,6 +39,9 @@ class Order {
   final double? loyaltyDiscount; // Discount from redeemed points
   final int? loyaltyPointsUsed; // Points redeemed for this order
 
+  // Cancellation
+  final String? cancellationReason; // Reason for cancellation (optional)
+
   const Order({
     required this.orderId,
     required this.orderNo,
@@ -51,9 +54,10 @@ class Order {
     this.customerCarPlate,
     this.loyaltyDiscount,
     this.loyaltyPointsUsed,
+    this.cancellationReason,
   });
 
-  Order copyWith({OrderStatus? status}) {
+  Order copyWith({OrderStatus? status, String? cancellationReason}) {
     return Order(
       orderId: orderId,
       orderNo: orderNo,
@@ -66,6 +70,7 @@ class Order {
       customerCarPlate: customerCarPlate,
       loyaltyDiscount: loyaltyDiscount,
       loyaltyPointsUsed: loyaltyPointsUsed,
+      cancellationReason: cancellationReason ?? this.cancellationReason,
     );
   }
 }
