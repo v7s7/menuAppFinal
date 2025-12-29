@@ -107,9 +107,12 @@ service cloud.firestore {
         
         // -------------------- ROLES --------------------
         match /roles/{userId} {
-          // Staff can read their own role, admins can read all roles
-          allow read: if isSignedIn() &&
+          // Individual document read: Staff can read their own, admins can read any
+          allow get: if isSignedIn() &&
             (request.auth.uid == userId || isAdmin(merchantId, branchId));
+
+          // Collection queries: Only admins can list all roles
+          allow list: if isAdmin(merchantId, branchId);
 
           // Only admins can manage roles
           allow write: if isAdmin(merchantId, branchId);
