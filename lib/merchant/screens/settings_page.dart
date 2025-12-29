@@ -4,6 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../core/branding/branding_providers.dart';
 import '../../core/config/email_config.dart';
+import '../../core/services/role_service.dart';
+import '../../core/widgets/permission_gate.dart';
+import 'user_management_page.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -360,6 +363,118 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
 
                 const SizedBox(height: 24),
+
+                // User Management Section (Admin Only)
+                AdminOnly(
+                  child: Column(
+                    children: [
+                      Card(
+                        child: InkWell(
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const UserManagementPage(),
+                              ),
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.group_outlined,
+                                  color: theme.colorScheme.primary,
+                                  size: 32,
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Team Members',
+                                        style: theme.textTheme.titleLarge?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Manage staff access and permissions',
+                                        style: theme.textTheme.bodyMedium?.copyWith(
+                                          color: theme.colorScheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.arrow_forward_ios,
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                  size: 20,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+
+                // Current User Role Display
+                Consumer(
+                  builder: (context, ref, child) {
+                    final roleData = ref.watch(currentUserRoleProvider).value;
+                    if (roleData == null) return const SizedBox.shrink();
+
+                    return Column(
+                      children: [
+                        Card(
+                          color: roleData.isAdmin
+                              ? Colors.purple.shade50
+                              : Colors.blue.shade50,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  roleData.isAdmin
+                                      ? Icons.admin_panel_settings
+                                      : Icons.badge_outlined,
+                                  color: roleData.isAdmin
+                                      ? Colors.purple
+                                      : Colors.blue,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Your Role: ${roleData.role.displayName}',
+                                        style: theme.textTheme.titleMedium?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      if (roleData.email.isNotEmpty)
+                                        Text(
+                                          roleData.email,
+                                          style: theme.textTheme.bodySmall,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+                    );
+                  },
+                ),
 
                 // Error message
                 if (_errorMessage != null)

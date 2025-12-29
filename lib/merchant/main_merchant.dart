@@ -17,6 +17,7 @@ import '../core/config/slug_routing.dart';
 import '../core/branding/branding_providers.dart';
 import '../core/services/order_notification_service.dart';
 import '../core/services/cancelled_order_notification_service.dart';
+import '../core/services/role_service.dart';
 
 // Screens
 import 'screens/login_screen.dart';
@@ -175,18 +176,51 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = <Widget>[
-      ProductsScreen(merchantId: widget.merchantId, branchId: widget.branchId),
-      const OrdersAdminPage(),
-      const AnalyticsDashboardPage(),
-    ];
+    // Watch user role to determine available tabs
+    final roleData = ref.watch(currentUserRoleProvider).value;
+    final isAdmin = roleData?.isAdmin ?? false;
+
+    // Build pages and destinations based on role
+    final pages = <Widget>[];
+    final destinations = <NavigationDestination>[];
+
+    if (isAdmin) {
+      // Admin: Show Products tab
+      pages.add(ProductsScreen(merchantId: widget.merchantId, branchId: widget.branchId));
+      destinations.add(const NavigationDestination(
+        icon: Icon(Icons.inventory_2_outlined),
+        selectedIcon: Icon(Icons.inventory_2),
+        label: 'Products',
+      ));
+    }
+
+    // Both admin and staff: Show Orders tab
+    pages.add(const OrdersAdminPage());
+
+    if (isAdmin) {
+      // Admin: Show Analytics tab
+      pages.add(const AnalyticsDashboardPage());
+    }
+
+    // Determine AppBar title based on current tab and role
+    String getTitle() {
+      if (isAdmin) {
+        if (_i == 0) return 'Products';
+        if (_i == 1) return 'Orders';
+        return 'Analytics';
+      } else {
+        return 'Orders';
+      }
+    }
+
+    // Analytics page doesn't show AppBar
+    final showAppBar = !isAdmin || _i != pages.length - 1;
 
     return Scaffold(
-      appBar: _i == 2
-          ? null
-          : AppBar(
+      appBar: showAppBar
+          ? AppBar(
               automaticallyImplyLeading: false,
-              title: Text(_i == 0 ? 'Products' : 'Orders'),
+              title: Text(getTitle()),
               actions: [
                 IconButton(
                   icon: const Icon(Icons.settings_outlined),
@@ -202,7 +236,7 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
                 ),
               ],
             ),
-      body: pages[_i],
+      body: pages.isNotEmpty ? pages[_i] : const Center(child: Text('No access')),
       bottomNavigationBar: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('merchants/${widget.merchantId}/branches/${widget.branchId}/orders')
@@ -211,38 +245,42 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
         builder: (context, snapshot) {
           final pendingCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
 
+          // Add Orders destination with badge
+          final ordersDestination = NavigationDestination(
+            icon: Badge(
+              isLabelVisible: pendingCount > 0,
+              label: Text(pendingCount.toString()),
+              backgroundColor: Colors.red,
+              textColor: Colors.white,
+              child: const Icon(Icons.receipt_long_outlined),
+            ),
+            selectedIcon: Badge(
+              isLabelVisible: pendingCount > 0,
+              label: Text(pendingCount.toString()),
+              backgroundColor: Colors.red,
+              textColor: Colors.white,
+              child: const Icon(Icons.receipt_long),
+            ),
+            label: 'Orders',
+          );
+
+          // Build final destinations list
+          final finalDestinations = List<NavigationDestination>.from(destinations);
+          finalDestinations.add(ordersDestination);
+
+          if (isAdmin) {
+            // Add Analytics for admin
+            finalDestinations.add(const NavigationDestination(
+              icon: Icon(Icons.analytics_outlined),
+              selectedIcon: Icon(Icons.analytics),
+              label: 'Analytics',
+            ));
+          }
+
           return NavigationBar(
-            selectedIndex: _i,
+            selectedIndex: _i.clamp(0, finalDestinations.length - 1),
             onDestinationSelected: (v) => setState(() => _i = v),
-            destinations: [
-              const NavigationDestination(
-                icon: Icon(Icons.inventory_2_outlined),
-                selectedIcon: Icon(Icons.inventory_2),
-                label: 'Products',
-              ),
-              NavigationDestination(
-                icon: Badge(
-                  isLabelVisible: pendingCount > 0,
-                  label: Text(pendingCount.toString()),
-                  backgroundColor: Colors.red,
-                  textColor: Colors.white,
-                  child: const Icon(Icons.receipt_long_outlined),
-                ),
-                selectedIcon: Badge(
-                  isLabelVisible: pendingCount > 0,
-                  label: Text(pendingCount.toString()),
-                  backgroundColor: Colors.red,
-                  textColor: Colors.white,
-                  child: const Icon(Icons.receipt_long),
-                ),
-                label: 'Orders',
-              ),
-              const NavigationDestination(
-                icon: Icon(Icons.analytics_outlined),
-                selectedIcon: Icon(Icons.analytics),
-                label: 'Analytics',
-              ),
-            ],
+            destinations: finalDestinations,
           );
         },
       ),
