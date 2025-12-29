@@ -235,7 +235,8 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
                   },
                 ),
               ],
-            ),
+            )
+          : null,
       body: pages.isNotEmpty ? pages[_i] : const Center(child: Text('No access')),
       bottomNavigationBar: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
