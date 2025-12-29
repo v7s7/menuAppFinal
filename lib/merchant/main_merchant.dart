@@ -177,8 +177,60 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
   @override
   Widget build(BuildContext context) {
     // Watch user role to determine available tabs
-    final roleData = ref.watch(currentUserRoleProvider).value;
-    final isAdmin = roleData?.isAdmin ?? false;
+    final roleAsync = ref.watch(currentUserRoleProvider);
+
+    // Show loading screen while role is being fetched
+    if (roleAsync.isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Loading...'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // If there's an error or no role, show access denied
+    if (roleAsync.hasError || roleAsync.value == null) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 64, color: Colors.grey),
+                const SizedBox(height: 16),
+                const Text(
+                  'No access to this merchant',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Please ask the merchant admin to grant you access.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: () => FirebaseAuth.instance.signOut(),
+                  icon: const Icon(Icons.logout),
+                  label: const Text('Sign Out'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final roleData = roleAsync.value!;
+    final isAdmin = roleData.isAdmin;
 
     // Build pages and destinations based on role
     final pages = <Widget>[];
@@ -200,6 +252,11 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
     if (isAdmin) {
       // Admin: Show Analytics tab
       pages.add(const AnalyticsDashboardPage());
+    }
+
+    // Ensure selected index is valid
+    if (_i >= pages.length) {
+      _i = 0;
     }
 
     // Determine AppBar title based on current tab and role

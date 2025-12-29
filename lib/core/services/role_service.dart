@@ -8,21 +8,34 @@ import '../branding/branding_providers.dart';
 /// Provider for the current user's role data
 final currentUserRoleProvider = StreamProvider<RoleData?>((ref) {
   final user = FirebaseAuth.instance.currentUser;
-  if (user == null) return Stream.value(null);
+
+  // If no user is logged in, return null immediately
+  if (user == null) {
+    return Stream.value(null);
+  }
 
   final merchantId = ref.watch(merchantIdProvider);
   final branchId = ref.watch(branchIdProvider);
 
+  // If merchant/branch IDs aren't set yet, return null
   if (merchantId == null || branchId == null) {
     return Stream.value(null);
   }
 
+  // Return the role document stream
   return FirebaseFirestore.instance
       .doc('merchants/$merchantId/branches/$branchId/roles/${user.uid}')
       .snapshots()
       .map((doc) {
-    if (!doc.exists || doc.data() == null) return null;
+    if (!doc.exists || doc.data() == null) {
+      // No role document means no access
+      return null;
+    }
     return RoleData.fromFirestore(doc.data()!);
+  }).handleError((error) {
+    // If there's a permission error, return null instead of crashing
+    print('[RoleService] Error loading role: $error');
+    return null;
   });
 });
 
