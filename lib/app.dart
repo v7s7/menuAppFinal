@@ -30,7 +30,6 @@ class _SweetsAppState extends ConsumerState<SweetsApp> {
   void _tryApplyIds() {
     final ids = ref.read(effectiveIdsProvider);
     if (ids != null && !_idsApplied) {
-      debugPrint('🔵 Customer App: Applying IDs m=${ids.merchantId} b=${ids.branchId}');
       ref.read(merchantIdProvider.notifier).setId(ids.merchantId);
       ref.read(branchIdProvider.notifier).setId(ids.branchId);
       setState(() => _idsApplied = true);
@@ -72,13 +71,11 @@ class _SweetsAppState extends ConsumerState<SweetsApp> {
     final theme = baseTheme.copyWith(
       scaffoldBackgroundColor: primary,
       textTheme: baseTheme.textTheme.apply(
-        fontFamily: 'YourFont', // ensure added in pubspec
         bodyColor: secondary,
         displayColor: secondary,
         decorationColor: secondary,
       ),
       primaryTextTheme: baseTheme.primaryTextTheme.apply(
-        fontFamily: 'YourFont',
         bodyColor: secondary,
         displayColor: secondary,
         decorationColor: secondary,

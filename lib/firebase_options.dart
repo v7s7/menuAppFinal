@@ -19,31 +19,28 @@ class DefaultFirebaseOptions {
     if (kIsWeb) {
       return web;
     }
+    // Note: Currently only web platform is configured.
+    // To add iOS/Android support, run: flutterfire configure
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
         throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for android - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
+          'Android platform not configured. Run `flutterfire configure` to add support.',
         );
       case TargetPlatform.iOS:
         throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
+          'iOS platform not configured. Run `flutterfire configure` to add support.',
         );
       case TargetPlatform.macOS:
         throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for macos - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
+          'macOS platform not configured. Run `flutterfire configure` to add support.',
         );
       case TargetPlatform.windows:
         throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
+          'Windows platform not configured. Run `flutterfire configure` to add support.',
         );
       case TargetPlatform.linux:
         throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for linux - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
+          'Linux platform not configured. Run `flutterfire configure` to add support.',
         );
       default:
         throw UnsupportedError(

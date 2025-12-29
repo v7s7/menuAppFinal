@@ -6,7 +6,7 @@
  * 1. Go to https://dash.cloudflare.com
  * 2. Workers & Pages > Create application > Create Worker
  * 3. Copy this code
- * 4. Add environment variable: RESEND_API_KEY = re_M2UEqUWF_QEJGCDgmP1mFpLi1DTNL3758
+ * 4. Add environment variable: RESEND_API_KEY = <your-resend-api-key>
  * 5. Deploy
  *
  * Free tier: 100,000 requests/day
