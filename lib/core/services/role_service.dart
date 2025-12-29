@@ -9,32 +9,44 @@ import '../branding/branding_providers.dart';
 final currentUserRoleProvider = StreamProvider<RoleData?>((ref) {
   final user = FirebaseAuth.instance.currentUser;
 
+  // Debug logging
+  print('[RoleService] AUTH uid=${user?.uid} email=${user?.email}');
+
   // If no user is logged in, return null immediately
   if (user == null) {
+    print('[RoleService] No user logged in');
     return Stream.value(null);
   }
 
   final merchantId = ref.watch(merchantIdProvider);
   final branchId = ref.watch(branchIdProvider);
 
+  print('[RoleService] merchantId=$merchantId branchId=$branchId');
+
   // If merchant/branch IDs aren't set yet, return null
   if (merchantId == null || branchId == null) {
+    print('[RoleService] Missing merchant or branch ID');
     return Stream.value(null);
   }
 
+  final rolePath = 'merchants/$merchantId/branches/$branchId/roles/${user.uid}';
+  print('[RoleService] Reading role from: $rolePath');
+
   // Return the role document stream
   return FirebaseFirestore.instance
-      .doc('merchants/$merchantId/branches/$branchId/roles/${user.uid}')
+      .doc(rolePath)
       .snapshots()
       .map((doc) {
+    print('[RoleService] Role doc exists: ${doc.exists}, data: ${doc.data()}');
     if (!doc.exists || doc.data() == null) {
       // No role document means no access
+      print('[RoleService] No role document found for user');
       return null;
     }
     return RoleData.fromFirestore(doc.data()!);
   }).handleError((error) {
     // If there's a permission error, return null instead of crashing
-    print('[RoleService] Error loading role: $error');
+    print('[RoleService] ❌ Error loading role: $error');
     return null;
   });
 });
