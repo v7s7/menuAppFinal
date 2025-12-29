@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/services/email_service.dart';
+import '../../core/branding/branding_providers.dart';
 
 class ReportsPage extends ConsumerStatefulWidget {
   const ReportsPage({super.key});

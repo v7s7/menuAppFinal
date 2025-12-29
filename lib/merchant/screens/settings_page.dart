@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../../core/config/app_config.dart';
 import '../../core/branding/branding_providers.dart';
 import '../../core/config/email_config.dart';
 

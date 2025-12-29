@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'sound_alert_service.dart';
-import '../data/order_models.dart' as om;
 
 /// Detects new orders and plays sound alerts
 class OrderSoundDetector {

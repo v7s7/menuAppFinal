@@ -1,8 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 
 import '../../sweets/data/sweets_repo.dart'; // sweetsStreamProvider
 import '../../sweets/data/sweet.dart';
@@ -13,7 +11,6 @@ import '../../orders/data/order_service.dart';
 import '../../orders/screens/order_status_page.dart';
 
 import '../../../core/config/app_config.dart';
-import '../../../core/services/email_service.dart' as email;
 
 // Loyalty system
 import '../../loyalty/data/loyalty_models.dart';

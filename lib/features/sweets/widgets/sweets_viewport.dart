@@ -112,7 +112,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
       return (s != null && s.isNotEmpty) ? s : null;
     })();
     final String? nutritionNote = (() {
-      final s = branding?.nutritionNote?.trim();
+      final s = branding?.nutritionNote.trim();
       return (s != null && s.isNotEmpty) ? s : null;
     })();
 
