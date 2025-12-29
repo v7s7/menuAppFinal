@@ -1,11 +1,11 @@
 {
-    "name": "sweets_app",
-    "short_name": "sweets_app",
+    "name": "Sweets - Order & Menu",
+    "short_name": "Sweets",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#F9EFF3",
+    "theme_color": "#FF6FA3",
+    "description": "Browse menu, place orders, and track your loyalty rewards.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
