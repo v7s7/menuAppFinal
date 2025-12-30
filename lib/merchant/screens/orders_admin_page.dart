@@ -8,7 +8,7 @@ import '../../core/branding/branding_providers.dart';
 import '../../core/services/role_service.dart';
 import '../../features/orders/data/order_models.dart' as om;
 import '../../features/loyalty/data/loyalty_service.dart';
-import '../settings_page.dart';
+import 'settings_page.dart';
 
 /// ===== Filters =====
 enum OrdersFilter { all, pending, preparing, ready, served, cancelled }
