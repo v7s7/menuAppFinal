@@ -105,7 +105,7 @@ class _SweetsAppState extends ConsumerState<SweetsApp> {
 
 // Stateful so we can hold a GlobalKey for the AppBar cart button
 class _CustomerScaffold extends ConsumerStatefulWidget {
-  const _CustomerScaffold({super.key});
+  const _CustomerScaffold();
   @override
   ConsumerState<_CustomerScaffold> createState() => _CustomerScaffoldState();
 }
@@ -191,7 +191,7 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
 }
 
 class _WaitingOrError extends ConsumerWidget {
-  const _WaitingOrError({super.key});
+  const _WaitingOrError();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -240,7 +240,7 @@ class _WaitingOrError extends ConsumerWidget {
 class _CartCountBadge extends StatelessWidget {
   final int count;
   final Color onSurface;
-  const _CartCountBadge({super.key, required this.count, required this.onSurface});
+  const _CartCountBadge({required this.count, required this.onSurface});
 
   @override
   Widget build(BuildContext context) {

@@ -984,7 +984,6 @@ class _LogoCard extends StatelessWidget {
   final double borderOpacity;
   final double fillOpacity;
   const _LogoCard({
-    super.key,
     required this.url,
     required this.box,
     required this.icon,

@@ -8,16 +8,24 @@ service cloud.firestore {
       return request.auth != null;
     }
     
-    function isOwner(merchantId, branchId) {
-      return isSignedIn() && 
-        exists(/databases/$(database)/documents/merchants/$(merchantId)/branches/$(branchId)/roles/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/merchants/$(merchantId)/branches/$(branchId)/roles/$(request.auth.uid)).data.role == 'owner';
+    function getUserRole(merchantId, branchId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/merchants/$(merchantId)/branches/$(branchId)/roles/$(request.auth.uid))
+          ? get(/databases/$(database)/documents/merchants/$(merchantId)/branches/$(branchId)/roles/$(request.auth.uid)).data.role
+          : null;
     }
-    
+
+    function isAdmin(merchantId, branchId) {
+      return getUserRole(merchantId, branchId) == 'admin';
+    }
+
     function isStaff(merchantId, branchId) {
-      return isSignedIn() && 
-        exists(/databases/$(database)/documents/merchants/$(merchantId)/branches/$(branchId)/roles/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/merchants/$(merchantId)/branches/$(branchId)/roles/$(request.auth.uid)).data.role in ['owner', 'staff'];
+      return getUserRole(merchantId, branchId) in ['admin', 'staff'];
+    }
+
+    // Legacy compatibility
+    function isOwner(merchantId, branchId) {
+      return isAdmin(merchantId, branchId);
     }
     
     // ==================== GLOBAL COLLECTIONS ====================
@@ -46,8 +54,8 @@ service cloud.firestore {
           // PUBLIC READ: Anyone can see menu items (app filters by isActive on client side)
           allow read: if true;
 
-          // STAFF WRITE: Only staff can create/update/delete
-          allow create: if isStaff(merchantId, branchId) &&
+          // ADMIN WRITE: Only admins can create/update/delete menu items
+          allow create: if isAdmin(merchantId, branchId) &&
             request.resource.data.merchantId == merchantId &&
             request.resource.data.branchId == branchId &&
             request.resource.data.isActive is bool &&
@@ -56,8 +64,8 @@ service cloud.firestore {
             request.resource.data.name is string &&
             request.resource.data.name.size() > 0;
 
-          allow update: if isStaff(merchantId, branchId);
-          allow delete: if isStaff(merchantId, branchId);
+          allow update: if isAdmin(merchantId, branchId);
+          allow delete: if isAdmin(merchantId, branchId);
         }
 
         // -------------------- CATEGORIES --------------------
@@ -65,8 +73,8 @@ service cloud.firestore {
           // PUBLIC READ: Anyone can see categories
           allow read: if true;
 
-          // STAFF WRITE: Only staff can create/update/delete
-          allow create, update, delete: if isStaff(merchantId, branchId);
+          // ADMIN WRITE: Only admins can create/update/delete categories
+          allow create, update, delete: if isAdmin(merchantId, branchId);
         }
 
         // -------------------- ORDERS --------------------
@@ -99,20 +107,24 @@ service cloud.firestore {
         
         // -------------------- ROLES --------------------
         match /roles/{userId} {
-          // Users can read their own role
-          allow read: if isSignedIn() && request.auth.uid == userId;
-          
-          // Only owner can manage roles
-          allow write: if isOwner(merchantId, branchId);
+          // Individual document read: Staff can read their own, admins can read any
+          allow get: if isSignedIn() &&
+            (request.auth.uid == userId || isAdmin(merchantId, branchId));
+
+          // Collection queries: Only admins can list all roles
+          allow list: if isAdmin(merchantId, branchId);
+
+          // Only admins can manage roles
+          allow write: if isAdmin(merchantId, branchId);
         }
-        
+
         // -------------------- CONFIG (BRANDING & LOYALTY) --------------------
         match /config/{docId} {
           // PUBLIC READ: Anyone can see branding & loyalty settings
           allow read: if true;
 
-          // STAFF WRITE: Only staff can update branding & loyalty
-          allow write: if isStaff(merchantId, branchId);
+          // ADMIN WRITE: Only admins can update branding & loyalty
+          allow write: if isAdmin(merchantId, branchId);
         }
 
         // -------------------- CUSTOMERS (LOYALTY) --------------------

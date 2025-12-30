@@ -12,12 +12,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:sweets_app/features/categories/screens/category_admin_page.dart';
 import '../../core/branding/branding_admin_page.dart';
 import '../../features/loyalty/screens/loyalty_settings_page.dart';
+import '../../core/widgets/permission_gate.dart';
 
 /// Merchant product manager (Cloudinary + Firestore).
 /// Override at build time:
 ///   --dart-define=CLOUDINARY_CLOUD=<cloud_name>
 ///   --dart-define=CLOUDINARY_PRESET=<unsigned_preset>
-class ProductsScreen extends StatelessWidget {
+class ProductsScreen extends ConsumerWidget {
   final String merchantId;
   final String branchId;
   const ProductsScreen({
@@ -27,34 +28,34 @@ class ProductsScreen extends StatelessWidget {
   });
 
   @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Wrap entire screen with admin-only access
+    return RequireAdmin(
+      child: _ProductsContent(merchantId: merchantId, branchId: branchId),
+    );
+  }
+}
+
+class _ProductsContent extends StatelessWidget {
+  final String merchantId;
+  final String branchId;
+
+  const _ProductsContent({
+    required this.merchantId,
+    required this.branchId,
+  });
+
+  @override
   Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-    final roleDoc = FirebaseFirestore.instance
-        .doc('merchants/$merchantId/branches/$branchId/roles/$uid')
-        .snapshots();
+    final itemsQuery = FirebaseFirestore.instance
+        .collection('merchants')
+        .doc(merchantId)
+        .collection('branches')
+        .doc(branchId)
+        .collection('menuItems')
+        .orderBy('sort', descending: false);
 
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: roleDoc,
-      builder: (context, roleSnap) {
-        if (roleSnap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (roleSnap.hasError) {
-          return Center(child: Text('Failed to verify access: ${roleSnap.error}'));
-        }
-        if (!roleSnap.hasData || !roleSnap.data!.exists) {
-          return const Center(
-            child: Text('No access. Ask the owner to grant your role.'),
-          );
-        }
-
-        final itemsQuery = FirebaseFirestore.instance
-            .collection('merchants').doc(merchantId)
-            .collection('branches').doc(branchId)
-            .collection('menuItems')
-            .orderBy('sort', descending: false);
-
-        return Scaffold(
+    return Scaffold(
           floatingActionButton: FloatingActionButton.extended(
             onPressed: () => _openEditor(context, merchantId, branchId, null),
             label: const Text('Add product'),
@@ -170,12 +171,10 @@ class ProductsScreen extends StatelessWidget {
                 },
               );
             },
-                ),
-              ),
-            ],
           ),
-        );
-      },
+        ),
+      ],
+    ),
     );
   }
 
