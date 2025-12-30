@@ -8,6 +8,7 @@ import '../../core/branding/branding_providers.dart';
 import '../../core/services/role_service.dart';
 import '../../features/orders/data/order_models.dart' as om;
 import '../../features/loyalty/data/loyalty_service.dart';
+import '../settings_page.dart';
 
 /// ===== Filters =====
 enum OrdersFilter { all, pending, preparing, ready, served, cancelled }
@@ -321,6 +322,19 @@ class OrdersAdminPage extends ConsumerWidget {
                   end: DateTime(picked.end.year, picked.end.month, picked.end.day, 23, 59, 59),
                 );
               }
+            },
+          ),
+          // Settings button (with logout for staff)
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const SettingsPage(),
+                  fullscreenDialog: true,
+                ),
+              );
             },
           ),
         ],
