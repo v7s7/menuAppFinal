@@ -120,7 +120,189 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final roleData = ref.watch(currentUserRoleProvider).value;
+    final isStaff = roleData?.isStaff ?? false;
 
+    // Staff users see simplified settings (account info + logout only)
+    if (isStaff) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Settings'),
+          backgroundColor: theme.colorScheme.primaryContainer,
+          leading: IconButton(
+            icon: const Icon(Icons.close),
+            tooltip: 'Close',
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 600),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Info message for staff
+                  Card(
+                    color: Colors.blue.shade50,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, color: Colors.blue.shade700),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Staff users have limited settings access. Contact an admin to change account settings.',
+                              style: TextStyle(
+                                color: Colors.blue.shade900,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Account Info Section
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.person_outline, color: theme.colorScheme.primary),
+                              const SizedBox(width: 12),
+                              Text(
+                                'Account',
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Current user info
+                          Consumer(
+                            builder: (context, ref, child) {
+                              final roleData = ref.watch(currentUserRoleProvider).value;
+                              final currentUser = FirebaseAuth.instance.currentUser;
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: CircleAvatar(
+                                      backgroundColor: theme.colorScheme.primaryContainer,
+                                      child: Icon(
+                                        Icons.person,
+                                        color: theme.colorScheme.onPrimaryContainer,
+                                      ),
+                                    ),
+                                    title: Text(
+                                      roleData?.displayName ?? 'User',
+                                      style: const TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                    subtitle: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(currentUser?.email ?? 'No email'),
+                                        const SizedBox(height: 4),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.blue.shade100,
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            'Staff',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.blue.shade900,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+
+                          const SizedBox(height: 16),
+                          const Divider(),
+                          const SizedBox(height: 16),
+
+                          // Sign Out button
+                          OutlinedButton.icon(
+                            onPressed: () async {
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('Sign Out'),
+                                  content: const Text(
+                                    'Are you sure you want to sign out?',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context, false),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    FilledButton.icon(
+                                      onPressed: () => Navigator.pop(context, true),
+                                      icon: const Icon(Icons.logout),
+                                      label: const Text('Sign Out'),
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+
+                              if (confirmed == true && mounted) {
+                                await FirebaseAuth.instance.signOut();
+                                if (mounted) {
+                                  Navigator.of(context).popUntil((route) => route.isFirst);
+                                }
+                              }
+                            },
+                            icon: const Icon(Icons.logout, color: Colors.red),
+                            label: const Text(
+                              'Sign Out',
+                              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.all(16),
+                              side: BorderSide(color: Colors.red.shade300),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Admin users see full settings
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(
