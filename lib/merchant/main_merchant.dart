@@ -270,8 +270,10 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
       }
     }
 
-    // Analytics page doesn't show AppBar
-    final showAppBar = !isAdmin || _i != pages.length - 1;
+    // Show AppBar only for admin on non-Analytics pages
+    // Staff: OrdersAdminPage has its own AppBar, so don't show MerchantShell AppBar
+    // Admin: Analytics page has its own AppBar, so don't show it there
+    final showAppBar = isAdmin && _i != pages.length - 1;
 
     return Scaffold(
       appBar: showAppBar
@@ -333,6 +335,12 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
               selectedIcon: Icon(Icons.analytics),
               label: 'Analytics',
             ));
+          }
+
+          // Only show NavigationBar if there are 2+ destinations
+          // Staff with only Orders page doesn't need navigation
+          if (finalDestinations.length < 2) {
+            return const SizedBox.shrink();
           }
 
           return NavigationBar(
