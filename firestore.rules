@@ -91,17 +91,55 @@ service cloud.firestore {
             request.resource.data.subtotal is number &&
             request.resource.data.subtotal >= 0 &&
             request.resource.data.subtotal <= 1000;
-          
+
           // READ: Own orders or staff
           allow read: if isSignedIn() &&
             (resource.data.userId == request.auth.uid ||
              isStaff(merchantId, branchId));
-          
-          // UPDATE: Only staff can update (change status and timestamps)
-          // Allow timestamp fields: acceptedAt, preparingAt, readyAt, servedAt, cancelledAt
-          allow update: if isStaff(merchantId, branchId);
-          
-          // No deletes
+
+          // UPDATE: Staff (including admin) can ONLY update order status workflow fields
+          // STRICT VALIDATION: Only allowed fields can be modified
+          allow update: if isStaff(merchantId, branchId) &&
+            // Immutable fields: Cannot change core order data
+            request.resource.data.userId == resource.data.userId &&
+            request.resource.data.merchantId == resource.data.merchantId &&
+            request.resource.data.branchId == resource.data.branchId &&
+            request.resource.data.items == resource.data.items &&
+            request.resource.data.subtotal == resource.data.subtotal &&
+            request.resource.data.createdAt == resource.data.createdAt &&
+            request.resource.data.orderNo == resource.data.orderNo &&
+            // Optional immutable fields (if they exist, they cannot be changed)
+            (!resource.data.keys().hasAny(['customerPhone']) || request.resource.data.customerPhone == resource.data.customerPhone) &&
+            (!resource.data.keys().hasAny(['customerCarPlate']) || request.resource.data.customerCarPlate == resource.data.customerCarPlate) &&
+            (!resource.data.keys().hasAny(['table']) || request.resource.data.table == resource.data.table) &&
+            (!resource.data.keys().hasAny(['loyaltyDiscount']) || request.resource.data.loyaltyDiscount == resource.data.loyaltyDiscount) &&
+            (!resource.data.keys().hasAny(['loyaltyPointsUsed']) || request.resource.data.loyaltyPointsUsed == resource.data.loyaltyPointsUsed) &&
+            // Status field: Must be valid order status
+            request.resource.data.status in ['pending', 'accepted', 'preparing', 'ready', 'served', 'cancelled'] &&
+            // Valid status transitions (prevent invalid workflows)
+            (
+              // pending -> accepted, preparing, or cancelled
+              (resource.data.status == 'pending' && request.resource.data.status in ['accepted', 'preparing', 'cancelled']) ||
+              // accepted -> preparing or cancelled
+              (resource.data.status == 'accepted' && request.resource.data.status in ['preparing', 'cancelled']) ||
+              // preparing -> ready or cancelled
+              (resource.data.status == 'preparing' && request.resource.data.status in ['ready', 'cancelled']) ||
+              // ready -> served or cancelled
+              (resource.data.status == 'ready' && request.resource.data.status in ['served', 'cancelled']) ||
+              // served/cancelled are terminal states (no changes allowed)
+              (resource.data.status in ['served', 'cancelled'] && request.resource.data.status == resource.data.status)
+            ) &&
+            // Audit logging: Must include updatedByUid when status changes
+            (request.resource.data.status == resource.data.status ||
+             (request.resource.data.updatedByUid is string && request.resource.data.updatedByUid == request.auth.uid)) &&
+            // Audit logging: updatedByRole must be valid if present
+            (!request.resource.data.keys().hasAny(['updatedByRole']) ||
+             request.resource.data.updatedByRole in ['admin', 'staff']) &&
+            // Cancellation reason: Only when status is cancelled
+            (!request.resource.data.keys().hasAny(['cancellationReason']) ||
+             request.resource.data.status == 'cancelled');
+
+          // No deletes (preserve order history)
           allow delete: if false;
         }
         
