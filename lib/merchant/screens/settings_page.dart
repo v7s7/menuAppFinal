@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../core/branding/branding_providers.dart';
 import '../../core/config/email_config.dart';
@@ -544,6 +545,146 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   label: Text(_isSaving ? 'Saving...' : 'Save Settings'),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.all(16),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Divider
+                const Divider(),
+
+                const SizedBox(height: 16),
+
+                // Account Info Section
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.person_outline, color: theme.colorScheme.primary),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Account',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Current user info
+                        Consumer(
+                          builder: (context, ref, child) {
+                            final roleData = ref.watch(currentUserRoleProvider).value;
+                            final currentUser = FirebaseAuth.instance.currentUser;
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  leading: CircleAvatar(
+                                    backgroundColor: theme.colorScheme.primaryContainer,
+                                    child: Icon(
+                                      roleData?.isAdmin == true
+                                        ? Icons.admin_panel_settings
+                                        : Icons.person,
+                                      color: theme.colorScheme.onPrimaryContainer,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    roleData?.displayName ?? 'User',
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(currentUser?.email ?? 'No email'),
+                                      const SizedBox(height: 4),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: roleData?.isAdmin == true
+                                            ? Colors.purple.shade100
+                                            : Colors.blue.shade100,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          roleData?.role.displayName ?? 'No Role',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: roleData?.isAdmin == true
+                                              ? Colors.purple.shade900
+                                              : Colors.blue.shade900,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+
+                        const SizedBox(height: 16),
+                        const Divider(),
+                        const SizedBox(height: 16),
+
+                        // Sign Out button
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Sign Out'),
+                                content: const Text(
+                                  'Are you sure you want to sign out?',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  FilledButton.icon(
+                                    onPressed: () => Navigator.pop(context, true),
+                                    icon: const Icon(Icons.logout),
+                                    label: const Text('Sign Out'),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (confirmed == true && mounted) {
+                              await FirebaseAuth.instance.signOut();
+                              if (mounted) {
+                                Navigator.of(context).popUntil((route) => route.isFirst);
+                              }
+                            }
+                          },
+                          icon: const Icon(Icons.logout, color: Colors.red),
+                          label: const Text(
+                            'Sign Out',
+                            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.all(16),
+                            side: BorderSide(color: Colors.red.shade300),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
