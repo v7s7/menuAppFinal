@@ -1,9 +1,11 @@
 // lib/merchant/screens/orders_admin_page.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/branding/branding_providers.dart';
+import '../../core/services/role_service.dart';
 import '../../features/orders/data/order_models.dart' as om;
 import '../../features/loyalty/data/loyalty_service.dart';
 
@@ -1158,16 +1160,31 @@ class _QuickActionsState extends ConsumerState<_QuickActions> {
         .collection('orders')
         .doc(widget.order.id);
 
+    // Get current user info for audit logging
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final roleData = ref.read(currentUserRoleProvider).value;
+    final auditFields = <String, dynamic>{};
+
+    if (currentUser != null) {
+      auditFields['updatedByUid'] = currentUser.uid;
+      if (roleData != null) {
+        auditFields['updatedByRole'] = roleData.role.name;
+        auditFields['updatedByEmail'] = roleData.email;
+      }
+    }
+
     try {
       await doc.update({
         'status': _toFirestore(om.OrderStatus.accepted),
         'acceptedAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
+        ...auditFields,
       });
       await doc.update({
         'status': _toFirestore(om.OrderStatus.preparing),
         'preparingAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
+        ...auditFields,
       });
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1248,11 +1265,24 @@ class _QuickActionsState extends ConsumerState<_QuickActions> {
         .collection('orders')
         .doc(widget.order.id);
 
+    // Get current user info for audit logging
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final roleData = ref.read(currentUserRoleProvider).value;
+
     try {
       final payload = <String, dynamic>{
         'status': _toFirestore(newStatus),
         'updatedAt': FieldValue.serverTimestamp(),
       };
+
+      // Add audit logging fields
+      if (currentUser != null) {
+        payload['updatedByUid'] = currentUser.uid;
+        if (roleData != null) {
+          payload['updatedByRole'] = roleData.role.name;
+          payload['updatedByEmail'] = roleData.email;
+        }
+      }
 
       switch (newStatus) {
         case om.OrderStatus.preparing:
