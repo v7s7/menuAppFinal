@@ -122,6 +122,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
+    // Check if current user is admin (admin needs close button, staff uses bottom nav)
+    final roleAsync = ref.watch(currentUserRoleProvider);
+    final isAdmin = roleAsync.value?.isAdmin ?? false;
+
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(
@@ -136,7 +140,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       appBar: AppBar(
         title: const Text('Settings'),
         backgroundColor: theme.colorScheme.primaryContainer,
-        automaticallyImplyLeading: false, // Remove back/close button - use bottom nav instead
+        // Admin needs close button (opens Settings as dialog)
+        // Staff doesn't need it (has Settings as bottom nav tab)
+        automaticallyImplyLeading: false,
+        leading: isAdmin
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Close',
+                onPressed: () => SlugNavigation.pop(context, ref),
+              )
+            : null,
         actions: [
           if (_isSaving)
             const Center(
