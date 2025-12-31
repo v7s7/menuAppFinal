@@ -212,14 +212,15 @@ class _BrandingAdminPageState extends ConsumerState<BrandingAdminPage> {
             onTap: () => _onPickAndUploadLogo(brandingRef),
           ),
           const SizedBox(height: 8),
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
             children: [
               OutlinedButton.icon(
                 icon: const Icon(Icons.upload),
                 label: const Text('Upload / Replace Logo'),
                 onPressed: () => _onPickAndUploadLogo(brandingRef),
               ),
-              const SizedBox(width: 12),
               if (_logoUrl != null && _logoUrl!.isNotEmpty)
                 OutlinedButton.icon(
                   icon: const Icon(Icons.delete_outline),
