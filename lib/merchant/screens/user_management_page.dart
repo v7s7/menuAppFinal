@@ -117,6 +117,7 @@ class _UserManagementContent extends ConsumerWidget {
     final emailController = TextEditingController();
     final nameController = TextEditingController();
     final passwordController = TextEditingController();
+    final adminPasswordController = TextEditingController();
 
     showDialog(
       context: context,
@@ -134,7 +135,7 @@ class _UserManagementContent extends ConsumerWidget {
               TextField(
                 controller: emailController,
                 decoration: const InputDecoration(
-                  labelText: 'Email',
+                  labelText: 'Staff Email',
                   hintText: 'staff@example.com',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.email),
@@ -155,10 +156,44 @@ class _UserManagementContent extends ConsumerWidget {
               TextField(
                 controller: passwordController,
                 decoration: const InputDecoration(
-                  labelText: 'Password',
+                  labelText: 'Staff Password',
                   hintText: 'Minimum 6 characters',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.lock),
+                ),
+                obscureText: true,
+              ),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.security, size: 20, color: Colors.orange.shade700),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Please confirm your admin password to create staff account',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: adminPasswordController,
+                decoration: const InputDecoration(
+                  labelText: 'Your Admin Password',
+                  hintText: 'Confirm your password',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.admin_panel_settings),
                 ),
                 obscureText: true,
               ),
@@ -176,7 +211,7 @@ class _UserManagementContent extends ConsumerWidget {
                     const SizedBox(width: 8),
                     const Expanded(
                       child: Text(
-                        'Staff will use this email and password to log in to the merchant portal.',
+                        'Staff will use their email and password to log in to the merchant portal.',
                         style: TextStyle(fontSize: 12),
                       ),
                     ),
@@ -196,30 +231,38 @@ class _UserManagementContent extends ConsumerWidget {
               final email = emailController.text.trim();
               final name = nameController.text.trim();
               final password = passwordController.text.trim();
+              final adminPassword = adminPasswordController.text.trim();
 
               if (email.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter an email')),
+                  const SnackBar(content: Text('Please enter staff email')),
                 );
                 return;
               }
 
               if (name.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter a name')),
+                  const SnackBar(content: Text('Please enter staff name')),
                 );
                 return;
               }
 
               if (password.isEmpty || password.length < 6) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Password must be at least 6 characters')),
+                  const SnackBar(content: Text('Staff password must be at least 6 characters')),
+                );
+                return;
+              }
+
+              if (adminPassword.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Please confirm your admin password')),
                 );
                 return;
               }
 
               Navigator.pop(context);
-              _addStaffUser(context, ref, email, name, password);
+              _addStaffUser(context, ref, email, name, password, adminPassword);
             },
             child: const Text('Add Staff'),
           ),
@@ -234,6 +277,7 @@ class _UserManagementContent extends ConsumerWidget {
     String email,
     String displayName,
     String password,
+    String adminPassword,
   ) async {
     final roleService = ref.read(roleServiceProvider);
     if (roleService == null) return;
@@ -241,6 +285,11 @@ class _UserManagementContent extends ConsumerWidget {
     // Save current user credentials to re-authenticate after creating staff
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
+
+    final adminEmail = currentUser.email;
+    if (adminEmail == null) return;
+
+    final adminUid = currentUser.uid;
 
     try {
       // Show loading dialog
@@ -266,10 +315,8 @@ class _UserManagementContent extends ConsumerWidget {
         );
       }
 
-      // Store current user's email for re-authentication
-      final currentUserEmail = currentUser.email;
-
-      // Create the new staff user account
+      // Step 1: Create the new staff user account
+      // Note: This will automatically sign in as the new staff user
       final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: email,
         password: password,
@@ -277,27 +324,40 @@ class _UserManagementContent extends ConsumerWidget {
 
       final newUserId = credential.user!.uid;
 
-      // Update display name for the new user
+      // Step 2: Update display name for the new user
       await credential.user!.updateDisplayName(displayName);
 
-      // Create the role document with the actual Firebase UID
+      // Step 3: Create the role document with the actual Firebase UID
       await roleService.setUserRole(
         userId: newUserId,
         role: UserRole.staff,
         email: email,
         displayName: displayName,
-        createdBy: currentUser.uid,
+        createdBy: adminUid,
       );
 
-      // Sign out the new user and back in as admin
+      // Step 4: Sign out the staff user (who is currently signed in)
       await FirebaseAuth.instance.signOut();
 
-      // Note: Admin will need to sign in again manually
-      // This is a limitation of the client-side approach
+      // Step 5: Re-authenticate the admin user to restore their session
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: adminEmail,
+        password: adminPassword,
+      );
 
       if (context.mounted) {
         Navigator.pop(context); // Close loading dialog
 
+        // Show success message - admin is still logged in!
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✓ Staff member "$displayName" added successfully!'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+
+        // Show credentials dialog
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
@@ -307,30 +367,54 @@ class _UserManagementContent extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('$displayName has been added as staff.'),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 const Text('Login credentials:', style: TextStyle(fontWeight: FontWeight.bold)),
-                Text('Email: $email'),
-                Text('Password: $password'),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
+                    color: Colors.grey.shade100,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.shade200),
+                    border: Border.all(color: Colors.grey.shade300),
                   ),
-                  child: const Column(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Important:',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                      Row(
+                        children: [
+                          const Icon(Icons.email, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(email, style: const TextStyle(fontFamily: 'monospace'))),
+                        ],
                       ),
-                      SizedBox(height: 4),
-                      Text(
-                        'You have been signed out and need to log in again as admin. '
-                        'Please save the staff credentials before closing this dialog.',
-                        style: TextStyle(fontSize: 12),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.lock, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(password, style: const TextStyle(fontFamily: 'monospace'))),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle, size: 20, color: Colors.green.shade700),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Share these credentials with the staff member. They can now log in to the merchant portal.',
+                          style: TextStyle(fontSize: 12),
+                        ),
                       ),
                     ],
                   ),
@@ -339,12 +423,8 @@ class _UserManagementContent extends ConsumerWidget {
             ),
             actions: [
               FilledButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  // Navigate back to login screen
-                  Navigator.of(context).popUntil((route) => route.isFirst);
-                },
-                child: const Text('OK, Log In Again'),
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Done'),
               ),
             ],
           ),
@@ -354,10 +434,18 @@ class _UserManagementContent extends ConsumerWidget {
       if (context.mounted) {
         Navigator.pop(context); // Close loading dialog
 
+        // Check if it's an authentication error for admin password
+        String errorMessage = 'Failed to add staff: ${e.toString()}';
+        if (e.toString().contains('wrong-password') ||
+            e.toString().contains('invalid-credential')) {
+          errorMessage = 'Invalid admin password. Please try again.';
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to add staff: ${e.toString()}'),
+            content: Text(errorMessage),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
