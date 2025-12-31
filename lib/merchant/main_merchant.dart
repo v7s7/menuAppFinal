@@ -18,6 +18,7 @@ import '../core/branding/branding_providers.dart';
 import '../core/services/order_notification_service.dart';
 import '../core/services/cancelled_order_notification_service.dart';
 import '../core/services/role_service.dart';
+import '../core/models/user_role.dart';
 
 // Screens
 import 'screens/login_screen.dart';
