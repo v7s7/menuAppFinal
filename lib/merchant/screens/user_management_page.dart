@@ -407,6 +407,8 @@ class _UserManagementContent extends ConsumerWidget {
         );
       }
 
+      print('[UserManagement] 🔄 Starting staff creation for $email');
+
       // Step 1: Create staff user using SECONDARY auth instance
       // This prevents the admin from being signed out during staff creation
       FirebaseApp? secondaryApp;
@@ -416,23 +418,35 @@ class _UserManagementContent extends ConsumerWidget {
       try {
         // Create a secondary Firebase app instance with unique name
         final secondaryAppName = 'staff_creation_${DateTime.now().millisecondsSinceEpoch}';
+        print('[UserManagement] 🔄 Creating secondary Firebase app: $secondaryAppName');
+
         secondaryApp = await Firebase.initializeApp(
           name: secondaryAppName,
           options: DefaultFirebaseOptions.currentPlatform,
         );
 
-        if (!context.mounted) return;
+        print('[UserManagement] ✓ Secondary Firebase app created');
+
+        if (!context.mounted) {
+          print('[UserManagement] ⚠️ Widget unmounted after app creation');
+          return;
+        }
 
         // Get auth instance for the secondary app
+        print('[UserManagement] 🔄 Getting auth instance for secondary app');
         secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
+        print('[UserManagement] ✓ Got secondary auth instance');
 
         // Create staff user on secondary auth (doesn't affect primary admin session)
+        print('[UserManagement] 🔄 Creating user with email: $email');
         final staffCredential = await secondaryAuth.createUserWithEmailAndPassword(
           email: email,
           password: password,
         );
+        print('[UserManagement] ✓ User created with UID: ${staffCredential.user!.uid}');
 
         if (!context.mounted) {
+          print('[UserManagement] ⚠️ Widget unmounted after user creation');
           await secondaryAuth.signOut();
           await secondaryApp.delete();
           return;
@@ -441,24 +455,32 @@ class _UserManagementContent extends ConsumerWidget {
         newUserId = staffCredential.user!.uid;
 
         // Update display name on the staff user
+        print('[UserManagement] 🔄 Updating display name to: $displayName');
         await staffCredential.user!.updateDisplayName(displayName);
+        print('[UserManagement] ✓ Display name updated');
 
         if (!context.mounted) {
+          print('[UserManagement] ⚠️ Widget unmounted after display name update');
           await secondaryAuth.signOut();
           await secondaryApp.delete();
           return;
         }
 
         // Sign out from secondary auth immediately
+        print('[UserManagement] 🔄 Signing out from secondary auth');
         await secondaryAuth.signOut();
+        print('[UserManagement] ✓ Signed out from secondary auth');
 
         // Delete the secondary app to free resources
+        print('[UserManagement] 🔄 Deleting secondary app');
         await secondaryApp.delete();
         secondaryApp = null;
         secondaryAuth = null;
+        print('[UserManagement] ✓ Secondary app deleted');
 
         print('[UserManagement] ✓ Staff account created via secondary auth, admin session preserved');
       } catch (e) {
+        print('[UserManagement] ❌ Error during secondary auth creation: $e');
         // Clean up secondary app on error
         if (secondaryAuth != null) {
           try {
@@ -473,13 +495,17 @@ class _UserManagementContent extends ConsumerWidget {
         rethrow;
       }
 
-      if (!context.mounted) return;
+      if (!context.mounted) {
+        print('[UserManagement] ⚠️ Widget unmounted before role creation');
+        return;
+      }
       if (newUserId == null) {
         throw Exception('Failed to create staff user');
       }
 
       // Step 2: Create the role document using PRIMARY Firestore instance (as admin)
       // The admin is still logged in, so this has proper permissions
+      print('[UserManagement] 🔄 Creating role document for UID: $newUserId');
       await roleService.setUserRole(
         userId: newUserId,
         role: UserRole.staff,
@@ -487,17 +513,28 @@ class _UserManagementContent extends ConsumerWidget {
         displayName: displayName,
         createdBy: adminUid,
       );
+      print('[UserManagement] ✓ Role document created');
 
-      if (!context.mounted) return;
+      if (!context.mounted) {
+        print('[UserManagement] ⚠️ Widget unmounted after role creation');
+        return;
+      }
 
       // Wait for Firestore propagation to prevent "No access" on first login
+      print('[UserManagement] 🔄 Waiting for Firestore propagation (1500ms)...');
       await Future.delayed(const Duration(milliseconds: 1500));
+      print('[UserManagement] ✓ Propagation wait complete');
 
-      if (!context.mounted) return;
+      if (!context.mounted) {
+        print('[UserManagement] ⚠️ Widget unmounted after propagation delay');
+        return;
+      }
 
       if (context.mounted) {
+        print('[UserManagement] ✓ Closing loading dialog');
         Navigator.pop(context); // Close loading dialog
 
+        print('[UserManagement] ✓ Staff creation complete! Showing success message');
         // Show success message - admin is still logged in!
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
