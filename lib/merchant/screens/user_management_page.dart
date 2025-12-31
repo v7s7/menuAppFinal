@@ -297,6 +297,11 @@ class _UserManagementContent extends ConsumerWidget {
 
     final adminUid = currentUser.uid;
 
+    // Capture ScaffoldMessenger early before any async operations
+    // This prevents "deactivated widget ancestor" errors
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
     try {
       // Show loading dialog
       if (context.mounted) {
@@ -341,7 +346,7 @@ class _UserManagementContent extends ConsumerWidget {
         _failedPasswordAttempts++;
 
         if (context.mounted) {
-          Navigator.pop(context); // Close loading dialog
+          navigator.pop(); // Close loading dialog
         }
 
         print('[UserManagement] ❌ Admin password verification failed (attempt $_failedPasswordAttempts/$_maxPasswordAttempts)');
@@ -351,15 +356,13 @@ class _UserManagementContent extends ConsumerWidget {
           // Force logout after 3 failed attempts
           print('[UserManagement] ⚠️ Max password attempts reached - forcing logout');
 
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('⚠️ Too many incorrect password attempts. Logging out for security.'),
-                backgroundColor: Colors.red,
-                duration: Duration(seconds: 4),
-              ),
-            );
-          }
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ Too many incorrect password attempts. Logging out for security.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 4),
+            ),
+          );
 
           // Wait a moment for the message to show, then logout
           await Future.delayed(const Duration(seconds: 2));
@@ -368,24 +371,22 @@ class _UserManagementContent extends ConsumerWidget {
         }
 
         // Show error and allow retry
-        if (context.mounted) {
-          final attemptsLeft = _maxPasswordAttempts - _failedPasswordAttempts;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Incorrect admin password. $attemptsLeft attempt${attemptsLeft == 1 ? "" : "s"} remaining.',
-              ),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
+        final attemptsLeft = _maxPasswordAttempts - _failedPasswordAttempts;
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Incorrect admin password. $attemptsLeft attempt${attemptsLeft == 1 ? "" : "s"} remaining.',
             ),
-          );
-        }
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
         return;
       }
 
       // Update loading dialog message
       if (context.mounted) {
-        Navigator.pop(context); // Close verification dialog
+        navigator.pop(); // Close verification dialog
         showDialog(
           context: context,
           barrierDismissible: false,
@@ -488,15 +489,19 @@ class _UserManagementContent extends ConsumerWidget {
       await Future.delayed(const Duration(milliseconds: 1500));
       print('[UserManagement] ✓ Propagation wait complete');
 
-      // Close loading dialog and show success
-      // Note: Don't check context.mounted - the context from the input dialog button
-      // might appear "unmounted" but Navigator operations still work fine
+      // Close loading dialog - use captured navigator to avoid ancestor lookup
       print('[UserManagement] ✓ Closing loading dialog');
-      Navigator.of(context).pop(); // Close loading dialog
+      try {
+        if (navigator.canPop()) {
+          navigator.pop();
+        }
+      } catch (e) {
+        print('[UserManagement] ⚠️ Could not close loading dialog: $e');
+      }
 
+      // Show success message - use captured messenger to avoid ancestor lookup
       print('[UserManagement] ✓ Staff creation complete! Showing success message');
-      // Show success message - admin is still logged in!
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
           content: Text('✓ Staff member "$displayName" added successfully!'),
           backgroundColor: Colors.green,
@@ -504,10 +509,11 @@ class _UserManagementContent extends ConsumerWidget {
         ),
       );
 
-      // Show credentials dialog
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
+      // Show credentials dialog - only if context still mounted
+      if (context.mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
             title: const Text('Staff Added Successfully!'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -576,12 +582,16 @@ class _UserManagementContent extends ConsumerWidget {
             ],
           ),
         );
+      }
     } catch (e) {
       // Always try to close loading dialog and show error
       print('[UserManagement] ❌ Error in staff creation: $e');
 
+      // Close loading dialog using captured navigator
       try {
-        Navigator.of(context).pop(); // Close loading dialog
+        if (navigator.canPop()) {
+          navigator.pop();
+        }
       } catch (_) {
         print('[UserManagement] ⚠️ Could not close loading dialog');
       }
@@ -593,7 +603,8 @@ class _UserManagementContent extends ConsumerWidget {
         errorMessage = 'Invalid admin password. Please try again.';
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      // Show error using captured messenger to avoid ancestor lookup
+      messenger.showSnackBar(
         SnackBar(
           content: Text(errorMessage),
           backgroundColor: Colors.red,
