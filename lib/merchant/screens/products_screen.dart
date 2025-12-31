@@ -13,6 +13,7 @@ import 'package:sweets_app/features/categories/screens/category_admin_page.dart'
 import '../../core/branding/branding_admin_page.dart';
 import '../../features/loyalty/screens/loyalty_settings_page.dart';
 import '../../core/widgets/permission_gate.dart';
+import '../../core/utils/slug_navigation.dart';
 
 /// Merchant product manager (Cloudinary + Firestore).
 /// Override at build time:
@@ -81,22 +82,28 @@ class _ProductsContent extends StatelessWidget {
                     const SizedBox(width: 16),
                     IconButton(
                       tooltip: 'Loyalty Program',
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const LoyaltySettingsPage()),
+                      onPressed: () => SlugNavigation.push(
+                        context,
+                        ref,
+                        (_) => const LoyaltySettingsPage(),
                       ),
                       icon: const Icon(Icons.card_giftcard_outlined),
                     ),
                     IconButton(
                       tooltip: 'Branding',
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const BrandingAdminPage()),
+                      onPressed: () => SlugNavigation.push(
+                        context,
+                        ref,
+                        (_) => const BrandingAdminPage(),
                       ),
                       icon: const Icon(Icons.palette_outlined),
                     ),
                     IconButton(
                       tooltip: 'Categories',
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const CategoryAdminPage()),
+                      onPressed: () => SlugNavigation.push(
+                        context,
+                        ref,
+                        (_) => const CategoryAdminPage(),
                       ),
                       icon: const Icon(Icons.category_outlined),
                     ),

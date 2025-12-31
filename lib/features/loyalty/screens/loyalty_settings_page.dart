@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/loyalty_models.dart';
 import '../data/loyalty_service.dart';
+import '../../../core/utils/slug_navigation.dart';
 
 /// Merchant page for configuring loyalty program settings
 class LoyaltySettingsPage extends ConsumerStatefulWidget {
@@ -55,7 +56,7 @@ class _LoyaltySettingsPageState extends ConsumerState<LoyaltySettingsPage> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           tooltip: 'Back',
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => SlugNavigation.pop(context, ref),
         ),
         title: const Text('Loyalty Program Settings'),
         actions: [
@@ -63,9 +64,10 @@ class _LoyaltySettingsPageState extends ConsumerState<LoyaltySettingsPage> {
             icon: const Icon(Icons.people),
             tooltip: 'View Customers',
             onPressed: () {
-              Navigator.push(
+              SlugNavigation.push(
                 context,
-                MaterialPageRoute(builder: (_) => const CustomersListPage()),
+                ref,
+                (_) => const CustomersListPage(),
               );
             },
           ),

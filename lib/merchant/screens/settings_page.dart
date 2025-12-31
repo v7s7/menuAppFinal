@@ -7,6 +7,7 @@ import '../../core/branding/branding_providers.dart';
 import '../../core/config/email_config.dart';
 import '../../core/services/role_service.dart';
 import '../../core/widgets/permission_gate.dart';
+import '../../core/utils/slug_navigation.dart';
 import 'user_management_page.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -138,7 +139,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         leading: IconButton(
           icon: const Icon(Icons.close),
           tooltip: 'Close',
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => SlugNavigation.pop(context, ref),
         ),
         actions: [
           if (_isSaving)
@@ -378,10 +379,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       Card(
                         child: InkWell(
                           onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const UserManagementPage(),
-                              ),
+                            SlugNavigation.push(
+                              context,
+                              ref,
+                              (_) => const UserManagementPage(),
                             );
                           },
                           borderRadius: BorderRadius.circular(12),

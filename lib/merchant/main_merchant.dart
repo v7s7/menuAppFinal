@@ -19,6 +19,7 @@ import '../core/services/order_notification_service.dart';
 import '../core/services/cancelled_order_notification_service.dart';
 import '../core/services/role_service.dart';
 import '../core/models/user_role.dart';
+import '../core/utils/slug_navigation.dart';
 
 // Screens
 import 'screens/login_screen.dart';
@@ -305,11 +306,11 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
                         icon: const Icon(Icons.settings_outlined),
                         tooltip: 'Settings',
                         onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => SettingsPage(),
-                              fullscreenDialog: true,
-                            ),
+                          SlugNavigation.push(
+                            context,
+                            ref,
+                            (_) => const SettingsPage(),
+                            fullscreenDialog: true,
                           );
                         },
                       ),

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/branding/branding_providers.dart';
+import '../../../core/utils/slug_navigation.dart';
 import '../data/categories_repo.dart';
 import '../data/category.dart';
 
@@ -34,7 +35,7 @@ class _CategoryAdminPageState extends ConsumerState<CategoryAdminPage> {
               setState(() => _activeParent = null);
             } else {
               // If viewing top-level categories, go back to Products page
-              Navigator.of(context).pop();
+              SlugNavigation.pop(context, ref);
             }
           },
         ),

@@ -10,6 +10,7 @@ import 'package:http/http.dart' as http;
 
 import 'branding.dart';
 import 'branding_providers.dart';
+import '../utils/slug_navigation.dart';
 
 /// App host for the customer menu link (query params only).
 const String kAppHost =
@@ -101,7 +102,7 @@ class _BrandingAdminPageState extends ConsumerState<BrandingAdminPage> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           tooltip: 'Back',
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => SlugNavigation.pop(context, ref),
         ),
         title: const Text('Branding Settings'),
       ),

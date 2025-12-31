@@ -11,6 +11,7 @@ import '../../orders/data/order_service.dart';
 import '../../orders/screens/order_status_page.dart';
 
 import '../../../core/config/app_config.dart';
+import '../../../core/utils/slug_navigation.dart';
 
 // Loyalty system
 import '../../loyalty/data/loyalty_models.dart';
@@ -110,10 +111,10 @@ class _CartSheetState extends ConsumerState<CartSheet> {
       // Navigate to order status
       if (context.mounted) {
         Navigator.of(context).maybePop();
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => OrderStatusPage(orderId: order.orderId),
-          ),
+        SlugNavigation.push(
+          context,
+          ref,
+          (_) => OrderStatusPage(orderId: order.orderId),
         );
       }
 
