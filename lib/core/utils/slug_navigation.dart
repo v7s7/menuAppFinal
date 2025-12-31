@@ -41,17 +41,25 @@ class SlugNavigation {
   /// If popping would take us out of /s/<slug>, redirect to /s/<slug> instead
   static void pop(BuildContext context, WidgetRef ref, [Object? result]) {
     final navigator = Navigator.of(context);
+    final slug = ref.read(currentSlugProvider);
 
     if (navigator.canPop()) {
+      // Pop normally - the route was created with slug-preserving PageRoute
       navigator.pop(result);
     } else {
-      // Can't pop - we're at the root
-      // On web, this might mean we're about to go to /s/ (without slug)
-      // Stay on the current page or redirect to slug root
-      final slug = ref.read(currentSlugProvider);
-      if (slug != null) {
-        // Already at slug root - do nothing
-        debugPrint('[SlugNavigation] At root of /s/$slug - no pop');
+      // Can't pop - we're at the root of the navigation stack
+      // This means we need to handle it specially to avoid going to /s/
+      debugPrint('[SlugNavigation] Cannot pop - at navigation root');
+
+      // For staff/merchant app: stay on current page (Settings is fullscreen dialog)
+      // For customer app: this shouldn't happen as customer navigation is simpler
+      // The fullscreenDialog route should handle its own dismissal
+
+      // If we absolutely need to navigate, go to slug root
+      if (slug != null && slug.isNotEmpty) {
+        debugPrint('[SlugNavigation] Would navigate to /s/$slug but staying on current page');
+        // Don't navigate - just stay on current page
+        // The dialog/page should be dismissible by other means
       }
     }
   }

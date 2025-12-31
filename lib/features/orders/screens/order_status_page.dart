@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../orders/data/order_models.dart';
 import '../../orders/data/order_service.dart';
+import '../../../core/config/app_config.dart';
 
 class OrderStatusPage extends ConsumerWidget {
   final String orderId;
@@ -57,8 +58,10 @@ class OrderStatusPage extends ConsumerWidget {
                   ? IconButton(
                       icon: const Icon(Icons.arrow_back),
                       onPressed: () {
-                        // Navigate back to menu (pop to root)
-                        Navigator.of(context).popUntil((route) => route.isFirst);
+                        // Navigate back to menu
+                        // This page was pushed with SlugNavigation.push() which preserves the slug
+                        // So a simple pop will return to the customer menu at /s/<slug>
+                        Navigator.of(context).pop();
                       },
                     )
                   : null,
