@@ -53,7 +53,7 @@ final currentUserRoleProvider = StreamProvider<RoleData?>((ref) {
       print('[RoleService] ⚠️ No role document found for user (may be creating account)');
       return null;
     }
-    return RoleData.fromFirestore(doc.data()!);
+    return RoleData.fromFirestore(doc.data()!, uid: doc.id);
   });
 });
 
@@ -107,7 +107,10 @@ class RoleService {
   Stream<List<RoleData>> getAllUsers() {
     return _rolesCollection.snapshots().map((snapshot) {
       return snapshot.docs
-          .map((doc) => RoleData.fromFirestore(doc.data() as Map<String, dynamic>))
+          .map((doc) => RoleData.fromFirestore(
+                doc.data() as Map<String, dynamic>,
+                uid: doc.id,
+              ))
           .toList();
     });
   }
@@ -116,7 +119,10 @@ class RoleService {
   Future<RoleData?> getUserRole(String userId) async {
     final doc = await _rolesCollection.doc(userId).get();
     if (!doc.exists || doc.data() == null) return null;
-    return RoleData.fromFirestore(doc.data() as Map<String, dynamic>);
+    return RoleData.fromFirestore(
+      doc.data() as Map<String, dynamic>,
+      uid: doc.id,
+    );
   }
 
   /// Add or update a user role

@@ -463,10 +463,47 @@ class _UserManagementContent extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Remove Access?'),
-        content: Text(
-          'Remove ${user.displayName.isNotEmpty ? user.displayName : user.email} from the team?\n\n'
-          'They will no longer be able to access this merchant portal.',
+        title: const Text('Remove Staff Access?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Remove ${user.displayName.isNotEmpty ? user.displayName : user.email} from the team?',
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 16, color: Colors.orange.shade700),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'What happens:',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '• Staff loses access to this merchant portal\n'
+                    '• Their login credentials remain active\n'
+                    '• Same email can be re-added later',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -493,9 +530,8 @@ class _UserManagementContent extends ConsumerWidget {
     if (roleService == null) return;
 
     try {
-      // Get user ID from email (reverse the temporary ID creation)
-      final userId = user.email.replaceAll('@', '_at_').replaceAll('.', '_');
-      await roleService.removeUser(userId);
+      // Use the actual Firebase UID from the RoleData object
+      await roleService.removeUser(user.uid);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

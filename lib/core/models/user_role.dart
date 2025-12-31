@@ -28,6 +28,7 @@ enum UserRole {
 
 /// Role document data from Firestore
 class RoleData {
+  final String uid; // Firebase User ID (document ID)
   final UserRole role;
   final String email;
   final String displayName;
@@ -35,6 +36,7 @@ class RoleData {
   final String? createdBy;
 
   const RoleData({
+    required this.uid,
     required this.role,
     required this.email,
     required this.displayName,
@@ -42,8 +44,9 @@ class RoleData {
     this.createdBy,
   });
 
-  factory RoleData.fromFirestore(Map<String, dynamic> data) {
+  factory RoleData.fromFirestore(Map<String, dynamic> data, {required String uid}) {
     return RoleData(
+      uid: uid,
       role: UserRole.fromString(data['role'] as String? ?? 'staff'),
       email: data['email'] as String? ?? '',
       displayName: data['displayName'] as String? ?? '',
