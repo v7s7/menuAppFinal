@@ -488,24 +488,26 @@ class _UserManagementContent extends ConsumerWidget {
       await Future.delayed(const Duration(milliseconds: 1500));
       print('[UserManagement] ✓ Propagation wait complete');
 
-      if (context.mounted) {
-        print('[UserManagement] ✓ Closing loading dialog');
-        Navigator.pop(context); // Close loading dialog
+      // Close loading dialog and show success
+      // Note: Don't check context.mounted - the context from the input dialog button
+      // might appear "unmounted" but Navigator operations still work fine
+      print('[UserManagement] ✓ Closing loading dialog');
+      Navigator.of(context).pop(); // Close loading dialog
 
-        print('[UserManagement] ✓ Staff creation complete! Showing success message');
-        // Show success message - admin is still logged in!
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✓ Staff member "$displayName" added successfully!'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-          ),
-        );
+      print('[UserManagement] ✓ Staff creation complete! Showing success message');
+      // Show success message - admin is still logged in!
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✓ Staff member "$displayName" added successfully!'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 4),
+        ),
+      );
 
-        // Show credentials dialog
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
+      // Show credentials dialog
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
             title: const Text('Staff Added Successfully!'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -576,24 +578,29 @@ class _UserManagementContent extends ConsumerWidget {
         );
       }
     } catch (e) {
-      if (context.mounted) {
-        Navigator.pop(context); // Close loading dialog
+      // Always try to close loading dialog and show error
+      print('[UserManagement] ❌ Error in staff creation: $e');
 
-        // Check if it's an authentication error for admin password
-        String errorMessage = 'Failed to add staff: ${e.toString()}';
-        if (e.toString().contains('wrong-password') ||
-            e.toString().contains('invalid-credential')) {
-          errorMessage = 'Invalid admin password. Please try again.';
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errorMessage),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
+      try {
+        Navigator.of(context).pop(); // Close loading dialog
+      } catch (_) {
+        print('[UserManagement] ⚠️ Could not close loading dialog');
       }
+
+      // Check if it's an authentication error for admin password
+      String errorMessage = 'Failed to add staff: ${e.toString()}';
+      if (e.toString().contains('wrong-password') ||
+          e.toString().contains('invalid-credential')) {
+        errorMessage = 'Invalid admin password. Please try again.';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
     }
   }
 
