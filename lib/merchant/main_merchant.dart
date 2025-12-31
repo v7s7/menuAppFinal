@@ -252,6 +252,9 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
     if (isAdmin) {
       // Admin: Show Analytics tab
       pages.add(const AnalyticsDashboardPage());
+    } else {
+      // Staff: Show Settings tab (NavigationBar requires at least 2 destinations)
+      pages.add(const SettingsPage());
     }
 
     // Ensure selected index is valid
@@ -266,32 +269,35 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
         if (_i == 1) return 'Orders';
         return 'Analytics';
       } else {
-        return 'Orders';
+        if (_i == 0) return 'Orders';
+        return 'Settings';
       }
     }
 
-    // Analytics page doesn't show AppBar
-    final showAppBar = !isAdmin || _i != pages.length - 1;
+    // Analytics and Settings pages don't show AppBar
+    final showAppBar = isAdmin ? (_i != pages.length - 1) : (_i == 0);
 
     return Scaffold(
       appBar: showAppBar
           ? AppBar(
               automaticallyImplyLeading: false,
               title: Text(getTitle()),
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.settings_outlined),
-                  tooltip: 'Settings',
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => SettingsPage(),
-                        fullscreenDialog: true,
+              actions: isAdmin
+                  ? [
+                      IconButton(
+                        icon: const Icon(Icons.settings_outlined),
+                        tooltip: 'Settings',
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => SettingsPage(),
+                              fullscreenDialog: true,
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
-              ],
+                    ]
+                  : null,
             )
           : null,
       body: pages.isNotEmpty ? pages[_i] : const Center(child: Text('No access')),
@@ -332,6 +338,13 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
               icon: Icon(Icons.analytics_outlined),
               selectedIcon: Icon(Icons.analytics),
               label: 'Analytics',
+            ));
+          } else {
+            // Add Settings for staff
+            finalDestinations.add(const NavigationDestination(
+              icon: Icon(Icons.settings_outlined),
+              selectedIcon: Icon(Icons.settings),
+              label: 'Settings',
             ));
           }
 
