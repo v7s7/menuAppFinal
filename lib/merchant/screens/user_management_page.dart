@@ -22,6 +22,10 @@ class UserManagementPage extends ConsumerWidget {
 class _UserManagementContent extends ConsumerWidget {
   const _UserManagementContent();
 
+  // Track failed password attempts
+  static int _failedPasswordAttempts = 0;
+  static const int _maxPasswordAttempts = 3;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final roleService = ref.watch(roleServiceProvider);
@@ -306,6 +310,92 @@ class _UserManagementContent extends ConsumerWidget {
                   children: [
                     CircularProgressIndicator(),
                     SizedBox(height: 16),
+                    Text('Verifying admin password...'),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
+      // STEP 0: Verify admin password FIRST before creating staff account
+      try {
+        // Create a temporary credential to verify the admin's password
+        final credential = EmailAuthProvider.credential(
+          email: adminEmail,
+          password: adminPassword,
+        );
+
+        // Try to re-authenticate the current user
+        await currentUser.reauthenticateWithCredential(credential);
+
+        // Password is correct! Reset failed attempts counter
+        _failedPasswordAttempts = 0;
+
+        print('[UserManagement] ✓ Admin password verified successfully');
+      } on FirebaseAuthException catch (e) {
+        // Password verification failed
+        _failedPasswordAttempts++;
+
+        if (context.mounted) {
+          Navigator.pop(context); // Close loading dialog
+        }
+
+        print('[UserManagement] ❌ Admin password verification failed (attempt $_failedPasswordAttempts/$_maxPasswordAttempts)');
+
+        // Check if max attempts reached
+        if (_failedPasswordAttempts >= _maxPasswordAttempts) {
+          // Force logout after 3 failed attempts
+          print('[UserManagement] ⚠️ Max password attempts reached - forcing logout');
+
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('⚠️ Too many incorrect password attempts. Logging out for security.'),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 4),
+              ),
+            );
+          }
+
+          // Wait a moment for the message to show, then logout
+          await Future.delayed(const Duration(seconds: 2));
+          await FirebaseAuth.instance.signOut();
+          return;
+        }
+
+        // Show error and allow retry
+        if (context.mounted) {
+          final attemptsLeft = _maxPasswordAttempts - _failedPasswordAttempts;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Incorrect admin password. $attemptsLeft attempt${attemptsLeft == 1 ? "" : "s"} remaining.',
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      // Update loading dialog message
+      if (context.mounted) {
+        Navigator.pop(context); // Close verification dialog
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: Card(
+              child: Padding(
+                padding: EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
                     Text('Creating staff account...'),
                   ],
                 ),
@@ -317,15 +407,15 @@ class _UserManagementContent extends ConsumerWidget {
 
       // Step 1: Create the new staff user account
       // Note: This will automatically sign in as the new staff user
-      final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      final staffCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      final newUserId = credential.user!.uid;
+      final newUserId = staffCredential.user!.uid;
 
       // Step 2: Update display name for the new user
-      await credential.user!.updateDisplayName(displayName);
+      await staffCredential.user!.updateDisplayName(displayName);
 
       // Step 3: Create the role document with the actual Firebase UID
       await roleService.setUserRole(
