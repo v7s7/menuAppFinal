@@ -576,7 +576,6 @@ class _UserManagementContent extends ConsumerWidget {
             ],
           ),
         );
-      }
     } catch (e) {
       // Always try to close loading dialog and show error
       print('[UserManagement] ❌ Error in staff creation: $e');
