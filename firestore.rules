@@ -145,12 +145,10 @@ service cloud.firestore {
         
         // -------------------- ROLES --------------------
         match /roles/{userId} {
-          // Individual document read: Staff can read their own, admins can read any
-          allow get: if isSignedIn() &&
+          // READ: Users can read their own role (includes snapshots), admins can read any
+          // Note: Firestore snapshots() requires 'list' permission, not just 'get'
+          allow read: if isSignedIn() &&
             (request.auth.uid == userId || isAdmin(merchantId, branchId));
-
-          // Collection queries: Only admins can list all roles
-          allow list: if isAdmin(merchantId, branchId);
 
           // CREATE: Admins can create any role, OR a user can create their own staff role
           // (This allows staff creation to work without server-side code)
