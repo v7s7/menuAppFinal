@@ -136,11 +136,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       appBar: AppBar(
         title: const Text('Settings'),
         backgroundColor: theme.colorScheme.primaryContainer,
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          tooltip: 'Close',
-          onPressed: () => SlugNavigation.pop(context, ref),
-        ),
+        automaticallyImplyLeading: false, // Remove back/close button - use bottom nav instead
         actions: [
           if (_isSaving)
             const Center(

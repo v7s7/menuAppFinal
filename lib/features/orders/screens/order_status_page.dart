@@ -54,17 +54,7 @@ class OrderStatusPage extends ConsumerWidget {
               elevation: 0,
               backgroundColor: Colors.transparent,
               scrolledUnderElevation: 0,
-              leading: finished
-                  ? IconButton(
-                      icon: const Icon(Icons.arrow_back),
-                      onPressed: () {
-                        // Navigate back to menu
-                        // This page was pushed with SlugNavigation.push() which preserves the slug
-                        // So a simple pop will return to the customer menu at /s/<slug>
-                        Navigator.of(context).pop();
-                      },
-                    )
-                  : null,
+              automaticallyImplyLeading: false, // No back button - order is confirmed
             ),
             body: _buildBody(context, order, cs, finished),
           ),
