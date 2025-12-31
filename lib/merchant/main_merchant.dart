@@ -206,11 +206,14 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
     }
 
     // If there's an error or no role, show access denied and sign out
+    // BUT: Give newly created accounts time to propagate before auto-logout
     if (roleAsync.hasError || roleAsync.value == null) {
-      // Automatically sign out if no role
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (FirebaseAuth.instance.currentUser != null) {
-          print('[MerchantShell] ⚠️ No role found - forcing logout');
+      // Don't immediately logout - wait a bit to see if role document appears
+      // This prevents "No access" on first login for newly created staff
+      Future.delayed(const Duration(seconds: 3), () {
+        final roleCheck = ref.read(currentUserRoleProvider).value;
+        if (roleCheck == null && FirebaseAuth.instance.currentUser != null) {
+          print('[MerchantShell] ⚠️ No role found after grace period - forcing logout');
           FirebaseAuth.instance.signOut();
         }
       });
@@ -225,12 +228,12 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
                 const Icon(Icons.error_outline, size: 64, color: Colors.grey),
                 const SizedBox(height: 16),
                 const Text(
-                  'Access Revoked',
+                  'Loading Access Permissions',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Your access to this merchant portal has been removed.\nSigning you out...',
+                  'Please wait while we verify your access...',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.grey),
                 ),

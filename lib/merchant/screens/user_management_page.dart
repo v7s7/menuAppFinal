@@ -426,9 +426,9 @@ class _UserManagementContent extends ConsumerWidget {
         createdBy: adminUid,
       );
 
-      // Wait a moment to ensure the role document is fully propagated in Firestore
-      // This prevents race conditions and permission errors
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Wait longer to ensure the role document is fully propagated and indexed in Firestore
+      // This prevents race conditions, permission errors, and "No access" on first login
+      await Future.delayed(const Duration(milliseconds: 1500));
 
       // Step 4: Sign out the staff user (who is currently signed in)
       await FirebaseAuth.instance.signOut();
