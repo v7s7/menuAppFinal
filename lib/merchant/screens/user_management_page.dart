@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import '../../core/models/user_role.dart';
 import '../../core/services/role_service.dart';
 import '../../core/widgets/permission_gate.dart';
 import '../../core/branding/branding_providers.dart';
+import '../../firebase_options.dart';
 
 /// User management page for admins to add/remove staff
 class UserManagementPage extends ConsumerWidget {
@@ -405,19 +407,79 @@ class _UserManagementContent extends ConsumerWidget {
         );
       }
 
-      // Step 1: Create the new staff user account
-      // Note: This will automatically sign in as the new staff user
-      final staffCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      // Step 1: Create staff user using SECONDARY auth instance
+      // This prevents the admin from being signed out during staff creation
+      FirebaseApp? secondaryApp;
+      FirebaseAuth? secondaryAuth;
+      String? newUserId;
 
-      final newUserId = staffCredential.user!.uid;
+      try {
+        // Create a secondary Firebase app instance with unique name
+        final secondaryAppName = 'staff_creation_${DateTime.now().millisecondsSinceEpoch}';
+        secondaryApp = await Firebase.initializeApp(
+          name: secondaryAppName,
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
 
-      // Step 2: Update display name for the new user
-      await staffCredential.user!.updateDisplayName(displayName);
+        if (!context.mounted) return;
 
-      // Step 3: Create the role document with the actual Firebase UID
+        // Get auth instance for the secondary app
+        secondaryAuth = FirebaseAuth.instanceFor(app: secondaryApp);
+
+        // Create staff user on secondary auth (doesn't affect primary admin session)
+        final staffCredential = await secondaryAuth.createUserWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+
+        if (!context.mounted) {
+          await secondaryAuth.signOut();
+          await secondaryApp.delete();
+          return;
+        }
+
+        newUserId = staffCredential.user!.uid;
+
+        // Update display name on the staff user
+        await staffCredential.user!.updateDisplayName(displayName);
+
+        if (!context.mounted) {
+          await secondaryAuth.signOut();
+          await secondaryApp.delete();
+          return;
+        }
+
+        // Sign out from secondary auth immediately
+        await secondaryAuth.signOut();
+
+        // Delete the secondary app to free resources
+        await secondaryApp.delete();
+        secondaryApp = null;
+        secondaryAuth = null;
+
+        print('[UserManagement] ✓ Staff account created via secondary auth, admin session preserved');
+      } catch (e) {
+        // Clean up secondary app on error
+        if (secondaryAuth != null) {
+          try {
+            await secondaryAuth.signOut();
+          } catch (_) {}
+        }
+        if (secondaryApp != null) {
+          try {
+            await secondaryApp.delete();
+          } catch (_) {}
+        }
+        rethrow;
+      }
+
+      if (!context.mounted) return;
+      if (newUserId == null) {
+        throw Exception('Failed to create staff user');
+      }
+
+      // Step 2: Create the role document using PRIMARY Firestore instance (as admin)
+      // The admin is still logged in, so this has proper permissions
       await roleService.setUserRole(
         userId: newUserId,
         role: UserRole.staff,
@@ -426,21 +488,12 @@ class _UserManagementContent extends ConsumerWidget {
         createdBy: adminUid,
       );
 
-      // Wait longer to ensure the role document is fully propagated and indexed in Firestore
-      // This prevents race conditions, permission errors, and "No access" on first login
+      if (!context.mounted) return;
+
+      // Wait for Firestore propagation to prevent "No access" on first login
       await Future.delayed(const Duration(milliseconds: 1500));
 
-      // Step 4: Sign out the staff user (who is currently signed in)
-      await FirebaseAuth.instance.signOut();
-
-      // Step 5: Re-authenticate the admin user to restore their session
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: adminEmail,
-        password: adminPassword,
-      );
-
-      // Force refresh the role provider to ensure clean state
-      ref.invalidate(currentUserRoleProvider);
+      if (!context.mounted) return;
 
       if (context.mounted) {
         Navigator.pop(context); // Close loading dialog
