@@ -134,6 +134,7 @@ class RoleService {
     String? createdBy,
   }) async {
     final data = RoleData(
+      uid: userId,
       role: role,
       email: email,
       displayName: displayName,
