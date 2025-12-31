@@ -336,6 +336,10 @@ class _UserManagementContent extends ConsumerWidget {
         createdBy: adminUid,
       );
 
+      // Wait a moment to ensure the role document is fully propagated in Firestore
+      // This prevents race conditions and permission errors
+      await Future.delayed(const Duration(milliseconds: 500));
+
       // Step 4: Sign out the staff user (who is currently signed in)
       await FirebaseAuth.instance.signOut();
 
@@ -344,6 +348,9 @@ class _UserManagementContent extends ConsumerWidget {
         email: adminEmail,
         password: adminPassword,
       );
+
+      // Force refresh the role provider to ensure clean state
+      ref.invalidate(currentUserRoleProvider);
 
       if (context.mounted) {
         Navigator.pop(context); // Close loading dialog

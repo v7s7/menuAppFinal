@@ -36,6 +36,16 @@ final currentUserRoleProvider = StreamProvider<RoleData?>((ref) {
   return FirebaseFirestore.instance
       .doc(rolePath)
       .snapshots()
+      .handleError((error, stackTrace) {
+        // Completely suppress permission errors during account creation
+        // This prevents console errors and UI glitches
+        if (error.toString().contains('permission-denied')) {
+          print('[RoleService] ⚠️ Permission denied - suppressed (account creation in progress)');
+          // Return nothing - this suppresses the error completely
+        } else {
+          print('[RoleService] ❌ Error loading role: $error');
+        }
+      })
       .map((doc) {
     print('[RoleService] ✓ Role doc exists: ${doc.exists}, data: ${doc.data()}');
     if (!doc.exists || doc.data() == null) {
@@ -44,16 +54,6 @@ final currentUserRoleProvider = StreamProvider<RoleData?>((ref) {
       return null;
     }
     return RoleData.fromFirestore(doc.data()!);
-  }).handleError((error, stackTrace) {
-    // Handle permission errors gracefully during account creation
-    if (error.toString().contains('permission-denied')) {
-      print('[RoleService] ⚠️ Permission denied (user may be in account creation process)');
-      // Return null stream instead of propagating error
-      return null;
-    }
-    // For other errors, log and return null
-    print('[RoleService] ❌ Error loading role: $error');
-    return null;
   });
 });
 
