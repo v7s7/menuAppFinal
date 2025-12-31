@@ -179,6 +179,15 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
     // Watch user role to determine available tabs
     final roleAsync = ref.watch(currentUserRoleProvider);
 
+    // Listen for role changes and auto-logout if role is deleted
+    ref.listen<AsyncValue<RoleData?>>(currentUserRoleProvider, (previous, next) {
+      // If user previously had a role but now it's null (deleted), sign them out immediately
+      if (previous?.value != null && next.value == null && !next.isLoading) {
+        print('[MerchantShell] ⚠️ Role deleted - forcing logout');
+        FirebaseAuth.instance.signOut();
+      }
+    });
+
     // Show loading screen while role is being fetched
     if (roleAsync.isLoading) {
       return const Scaffold(
@@ -195,8 +204,16 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
       );
     }
 
-    // If there's an error or no role, show access denied
+    // If there's an error or no role, show access denied and sign out
     if (roleAsync.hasError || roleAsync.value == null) {
+      // Automatically sign out if no role
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (FirebaseAuth.instance.currentUser != null) {
+          print('[MerchantShell] ⚠️ No role found - forcing logout');
+          FirebaseAuth.instance.signOut();
+        }
+      });
+
       return Scaffold(
         body: Center(
           child: Padding(
@@ -207,21 +224,17 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
                 const Icon(Icons.error_outline, size: 64, color: Colors.grey),
                 const SizedBox(height: 16),
                 const Text(
-                  'No access to this merchant',
+                  'Access Revoked',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Please ask the merchant admin to grant you access.',
+                  'Your access to this merchant portal has been removed.\nSigning you out...',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 24),
-                FilledButton.icon(
-                  onPressed: () => FirebaseAuth.instance.signOut(),
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Sign Out'),
-                ),
+                const CircularProgressIndicator(),
               ],
             ),
           ),
