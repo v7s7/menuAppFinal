@@ -32,20 +32,26 @@ final currentUserRoleProvider = StreamProvider<RoleData?>((ref) {
   final rolePath = 'merchants/$merchantId/branches/$branchId/roles/${user.uid}';
   print('[RoleService] Reading role from: $rolePath');
 
-  // Return the role document stream
+  // Return the role document stream with improved error handling
   return FirebaseFirestore.instance
       .doc(rolePath)
       .snapshots()
       .map((doc) {
-    print('[RoleService] Role doc exists: ${doc.exists}, data: ${doc.data()}');
+    print('[RoleService] ✓ Role doc exists: ${doc.exists}, data: ${doc.data()}');
     if (!doc.exists || doc.data() == null) {
       // No role document means no access
-      print('[RoleService] No role document found for user');
+      print('[RoleService] ⚠️ No role document found for user (may be creating account)');
       return null;
     }
     return RoleData.fromFirestore(doc.data()!);
-  }).handleError((error) {
-    // If there's a permission error, return null instead of crashing
+  }).handleError((error, stackTrace) {
+    // Handle permission errors gracefully during account creation
+    if (error.toString().contains('permission-denied')) {
+      print('[RoleService] ⚠️ Permission denied (user may be in account creation process)');
+      // Return null stream instead of propagating error
+      return null;
+    }
+    // For other errors, log and return null
     print('[RoleService] ❌ Error loading role: $error');
     return null;
   });

@@ -152,8 +152,19 @@ service cloud.firestore {
           // Collection queries: Only admins can list all roles
           allow list: if isAdmin(merchantId, branchId);
 
-          // Only admins can manage roles
-          allow write: if isAdmin(merchantId, branchId);
+          // CREATE: Admins can create any role, OR a user can create their own staff role
+          // (This allows staff creation to work without server-side code)
+          allow create: if isAdmin(merchantId, branchId) || (
+            isSignedIn() &&
+            request.auth.uid == userId &&
+            request.resource.data.role == 'staff' &&
+            request.resource.data.email is string &&
+            request.resource.data.displayName is string &&
+            request.resource.data.createdBy is string
+          );
+
+          // UPDATE/DELETE: Only admins can modify or delete roles
+          allow update, delete: if isAdmin(merchantId, branchId);
         }
 
         // -------------------- CONFIG (BRANDING & LOYALTY) --------------------
