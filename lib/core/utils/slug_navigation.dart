@@ -89,7 +89,4 @@ class _SlugPreservingPageRoute<T> extends MaterialPageRoute<T> {
             name: slug != null ? '/s/$slug' : null,
           ),
         );
-
-  @override
-  String? get restorationId => slug != null ? 's_$slug' : super.restorationId;
 }

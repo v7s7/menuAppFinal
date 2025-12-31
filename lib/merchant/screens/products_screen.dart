@@ -37,7 +37,7 @@ class ProductsScreen extends ConsumerWidget {
   }
 }
 
-class _ProductsContent extends StatelessWidget {
+class _ProductsContent extends ConsumerWidget {
   final String merchantId;
   final String branchId;
 
@@ -47,7 +47,7 @@ class _ProductsContent extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final itemsQuery = FirebaseFirestore.instance
         .collection('merchants')
         .doc(merchantId)
