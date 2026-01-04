@@ -143,30 +143,84 @@ class _ProductsContent extends StatelessWidget {
                   final String name = (v['name'] ?? d.id).toString();
                   final String imageUrl = (v['imageUrl'] ?? '').toString();
                   final String kcal = (v['calories']?.toString() ?? '').trim();
+                  final bool isActive = (v['isActive'] as bool?) ?? true;
                   final subtitle = kcal.isNotEmpty
                       ? 'BHD $priceStr • $kcal kcal'
                       : 'BHD $priceStr';
 
-                  return ListTile(
-                    leading: _ProductThumb(imageUrl: imageUrl),
-                    title: Text(name),
-                    subtitle: Text(subtitle),
-                   trailing: Row(
-                     mainAxisSize: MainAxisSize.min,
-                     children: [
-                       IconButton(
-                         tooltip: 'Edit',
-                         icon: const Icon(Icons.edit),
-                         onPressed: () => _openEditor(context, merchantId, branchId, d),
-                       ),
-                       IconButton(
-                         tooltip: 'Delete',
-                         icon: const Icon(Icons.delete_outline),
-                         color: Theme.of(context).colorScheme.error,
-                         onPressed: () => _confirmDelete(context, d),
-                       ),
-                     ],
-                   ),
+                  return Opacity(
+                    opacity: isActive ? 1.0 : 0.5,
+                    child: ListTile(
+                      leading: _ProductThumb(imageUrl: imageUrl),
+                      title: Row(
+                        children: [
+                          Expanded(child: Text(name)),
+                          if (!isActive)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.red,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'OUT OF STOCK',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      subtitle: Text(subtitle),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: isActive ? 'Mark Out of Stock' : 'Mark Available',
+                            icon: Icon(
+                              isActive ? Icons.visibility : Icons.visibility_off_outlined,
+                              color: isActive ? Colors.green : Colors.grey,
+                            ),
+                            onPressed: () async {
+                              try {
+                                await d.reference.update({'isActive': !isActive});
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        isActive
+                                            ? '"$name" marked as out of stock'
+                                            : '"$name" is now available',
+                                      ),
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Failed to update: $e')),
+                                  );
+                                }
+                              }
+                            },
+                          ),
+                          IconButton(
+                            tooltip: 'Edit',
+                            icon: const Icon(Icons.edit),
+                            onPressed: () => _openEditor(context, merchantId, branchId, d),
+                          ),
+                          IconButton(
+                            tooltip: 'Delete',
+                            icon: const Icon(Icons.delete_outline),
+                            color: Theme.of(context).colorScheme.error,
+                            onPressed: () => _confirmDelete(context, d),
+                          ),
+                        ],
+                      ),
+                    ),
                   );
                 },
               );

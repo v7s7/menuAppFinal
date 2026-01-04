@@ -38,6 +38,16 @@
         { "fieldPath": "parentId", "order": "ASCENDING" },
         { "fieldPath": "sort",     "order": "ASCENDING" }
       ]
+    },
+
+    // Orders: For sound alerts (pending orders sorted by creation time)
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

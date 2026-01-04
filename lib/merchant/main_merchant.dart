@@ -18,6 +18,7 @@ import '../core/branding/branding_providers.dart';
 import '../core/services/order_notification_service.dart';
 import '../core/services/cancelled_order_notification_service.dart';
 import '../core/services/role_service.dart';
+import '../features/orders/services/sound_alert_service.dart';
 
 // Screens
 import 'screens/login_screen.dart';
@@ -129,11 +130,14 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
   final _notificationService = OrderNotificationService();
   final _cancelledOrderService = CancelledOrderNotificationService();
   StreamSubscription<DocumentSnapshot>? _settingsSubscription;
+  StreamSubscription<QuerySnapshot>? _soundAlertSubscription;
+  final Set<String> _processedSoundAlerts = {};
 
   @override
   void initState() {
     super.initState();
     _watchSettingsAndStartNotifications();
+    _startSoundAlerts();
   }
 
   @override
@@ -141,7 +145,46 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
     _notificationService.stopListening();
     _cancelledOrderService.stopListening();
     _settingsSubscription?.cancel();
+    _soundAlertSubscription?.cancel();
     super.dispose();
+  }
+
+  /// Start listening for new pending orders and play sound alerts
+  void _startSoundAlerts() {
+    _soundAlertSubscription = FirebaseFirestore.instance
+        .collection('merchants/${widget.merchantId}/branches/${widget.branchId}/orders')
+        .where('status', isEqualTo: 'pending')
+        .orderBy('createdAt', descending: true)
+        .limit(50)
+        .snapshots()
+        .listen((snapshot) {
+      for (final change in snapshot.docChanges) {
+        if (change.type == DocumentChangeType.added) {
+          final orderId = change.doc.id;
+
+          // Skip if already processed
+          if (_processedSoundAlerts.contains(orderId)) {
+            continue;
+          }
+
+          _processedSoundAlerts.add(orderId);
+
+          // Play sound alert
+          try {
+            ref.read(soundAlertServiceProvider).playNewOrderAlert();
+            print('[MerchantShell] 🔔 Sound alert played for order: $orderId');
+          } catch (e) {
+            print('[MerchantShell] ❌ Failed to play sound alert: $e');
+          }
+
+          // Clean up old processed alerts (keep last 100)
+          if (_processedSoundAlerts.length > 100) {
+            final toRemove = _processedSoundAlerts.length - 100;
+            _processedSoundAlerts.removeAll(_processedSoundAlerts.take(toRemove));
+          }
+        }
+      }
+    });
   }
 
   /// Start email notification services (ALWAYS active)

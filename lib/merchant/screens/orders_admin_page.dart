@@ -33,7 +33,7 @@ extension OrdersFilterX on OrdersFilter {
   String get label {
     switch (this) {
       case OrdersFilter.all:
-        return 'All';
+        return 'Active'; // Excludes served/cancelled
       case OrdersFilter.pending:
         return 'Pending';
       case OrdersFilter.preparing:
@@ -48,6 +48,7 @@ extension OrdersFilterX on OrdersFilter {
   }
 }
 
+// Default to "All" which shows only active orders (excludes served/cancelled)
 final ordersFilterProvider =
     StateProvider<OrdersFilter>((_) => OrdersFilter.all);
 
