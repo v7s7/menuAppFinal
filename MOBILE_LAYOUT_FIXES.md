@@ -6,26 +6,40 @@ All changes made to match the reference design and fix real-device mobile layout
 
 ---
 
-## 🐛 ROOT CAUSES IDENTIFIED
+## 🐛 ROOT CAUSES IDENTIFIED (PHASE 1 + PHASE 2)
 
-### 1. **CRITICAL: Missing Viewport Meta Tag**
+### 1. **CRITICAL: Missing Viewport Meta Tag** ✅ FIXED
 - **File**: `web/index.html:6`
 - **Problem**: No viewport meta tag → mobile browsers rendered at desktop width, then scaled down
 - **Result**: Cramped layout, elements sticking together
 - **Fix**: Added proper viewport with `width=device-width, initial-scale=1.0, viewport-fit=cover`
 
-### 2. **Fixed Pixel Spacing**
+### 2. **CRITICAL: Fractional Alignment Positioning** ✅ FIXED (PHASE 2)
+- **File**: `lib/features/sweets/widgets/sweets_viewport.dart:256-374`
+- **Problem**: Used `Alignment(0, 0.48)` and `Alignment(0, 0.78)` for positioning category bar and controls
+- **Why It Failed**: Fractional alignments calculate based on available viewport space. On real iOS Safari, the dynamic toolbar/browser chrome changes viewport height constantly, causing elements to compress and stick together
+- **DevTools vs Real Device**: DevTools has static viewport, real Safari has dynamic toolbar that shrinks viewport
+- **Result**: Elements "stuck together" on iPhone 15, perfect in DevTools
+- **Fix**: Replaced `Align` widgets with `Positioned(bottom: 0)` + `Column` with explicit `SizedBox(height: 24)` spacing
+
+### 3. **iOS Safari Text Auto-Sizing** ✅ FIXED (PHASE 2)
+- **File**: `web/index.html:10-27`
+- **Problem**: iOS Safari automatically adjusts font sizes based on device orientation and zoom level
+- **Result**: Inconsistent text rendering, layout shifts
+- **Fix**: Added `-webkit-text-size-adjust: 100%` and `text-size-adjust: 100%`
+
+### 4. **Fixed Pixel Spacing** ✅ FIXED (PHASE 1)
 - **File**: `lib/features/sweets/widgets/sweets_viewport.dart`
 - **Problem**: Hardcoded pixel values didn't scale properly on different devices
 - **Result**: Inconsistent spacing, elements too close on smaller screens
 - **Fix**: Increased spacing values and added safe-area support
 
-### 3. **Small Touch Targets**
+### 5. **Small Touch Targets** ✅ FIXED (PHASE 1)
 - **Problem**: Buttons below 44px minimum recommended tap target size
 - **Result**: Difficult to tap accurately on real devices
 - **Fix**: Increased button padding and sizes to ≥44px
 
-### 4. **Logo/Control Overlap**
+### 6. **Logo/Control Overlap** ✅ FIXED (PHASE 1)
 - **Problem**: Logo positioned too close to AppBar on notched devices
 - **Result**: Logo cut off or overlapping with status bar
 - **Fix**: Increased top padding from 8 to 16, reduced logo size slightly
@@ -34,9 +48,9 @@ All changes made to match the reference design and fix real-device mobile layout
 
 ## 📝 COMPLETE LIST OF CHANGES
 
-### File 1: `web/index.html`
+### File 1: `web/index.html` (PHASE 1 + PHASE 2)
 
-**Line 6-7**: Added Viewport Meta Tag
+**Lines 6-7 (PHASE 1)**: Added Viewport Meta Tag
 ```html
 <!-- BEFORE -->
 <!-- Flutter Web manages the viewport; omit to silence warnings -->
@@ -50,7 +64,34 @@ All changes made to match the reference design and fix real-device mobile layout
 
 ---
 
-### File 2: `lib/features/sweets/widgets/sweets_viewport.dart`
+**Lines 10-27 (PHASE 2)**: Added iOS Safari Optimizations
+```html
+<!-- ADDED (new) -->
+<!-- iOS Safari optimizations: Prevent text auto-sizing and ensure consistent rendering -->
+<meta name="format-detection" content="telephone=no" />
+<style>
+  html, body {
+    /* Prevent iOS Safari from auto-adjusting font sizes */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    /* Ensure smooth scrolling on iOS */
+    -webkit-overflow-scrolling: touch;
+    /* Prevent bounce/overscroll on iOS that can affect layout */
+    overscroll-behavior: none;
+    /* Ensure consistent box-sizing */
+    box-sizing: border-box;
+  }
+  *, *::before, *::after {
+    box-sizing: inherit;
+  }
+</style>
+```
+
+**Impact**: ✅ Prevents iOS Safari from auto-adjusting font sizes and ensures consistent rendering across all iOS devices
+
+---
+
+### File 2: `lib/features/sweets/widgets/sweets_viewport.dart` (PHASE 1 + PHASE 2)
 
 **Lines 237-249**: Logo Positioning & Sizing
 ```dart
@@ -69,7 +110,53 @@ borderOpacity: 0.15, fillOpacity: 0.12, // Darker/more visible
 
 ---
 
-**Lines 319-325**: Product Name Font Size
+**Lines 256-374 (PHASE 2 - CRITICAL FIX)**: Replaced Fractional Alignment with Explicit Spacing
+```dart
+// BEFORE (PHASE 1) - Used fractional alignment
+Align(
+  alignment: const Alignment(0, 0.48), // Category bar at 48% down
+  child: CategoryBar(),
+),
+Align(
+  alignment: const Alignment(0, 0.78), // Controls at 78% down
+  child: Controls(),
+),
+
+// AFTER (PHASE 2) - Use Positioned with Column and explicit spacing
+Positioned(
+  left: 0,
+  right: 0,
+  bottom: 0, // Anchor to bottom (not fractional position)
+  child: SafeArea(
+    minimum: const EdgeInsets.only(bottom: 16),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Category bar section
+        Center(child: CategoryBar()),
+
+        // CRITICAL: Explicit spacing (not dependent on viewport height)
+        const SizedBox(height: 24),
+
+        // Controls section
+        Center(child: Controls()),
+      ],
+    ),
+  ),
+),
+```
+
+**Why This Fixes Real Device Issues**:
+- ❌ **Problem**: Fractional `Alignment(0, 0.48)` calculates position as percentage of available space
+- 🔴 **iOS Safari**: Dynamic toolbar shrinks viewport height when scrolling → fractional positions compress → elements stick together
+- ✅ **Solution**: `Positioned(bottom: 0)` + `SizedBox(height: 24)` = guaranteed spacing regardless of viewport changes
+- ✅ **Result**: Elements maintain 24px gap even when iOS Safari toolbar appears/disappears
+
+**Impact**: ✅ **PRIMARY FIX** - Resolves "stuck together" issue on real iPhone 15 and all iOS devices with dynamic toolbars
+
+---
+
+**Lines 319-325 (PHASE 1)**: Product Name Font Size
 ```dart
 // BEFORE
 fontSize: 16,

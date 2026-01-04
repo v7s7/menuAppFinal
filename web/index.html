@@ -7,6 +7,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
 <meta name="description" content="Sweets PWA" />
 <meta name="theme-color" content="#ffffff" />
+<!-- iOS Safari optimizations: Prevent text auto-sizing and ensure consistent rendering -->
+<meta name="format-detection" content="telephone=no" />
+<style>
+  html, body {
+    /* Prevent iOS Safari from auto-adjusting font sizes */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    /* Ensure smooth scrolling on iOS */
+    -webkit-overflow-scrolling: touch;
+    /* Prevent bounce/overscroll on iOS that can affect layout */
+    overscroll-behavior: none;
+    /* Ensure consistent box-sizing */
+    box-sizing: border-box;
+  }
+  *, *::before, *::after {
+    box-sizing: inherit;
+  }
+</style>
 
 <!-- PWA / icons -->
 <link rel="manifest" href="manifest.json" />

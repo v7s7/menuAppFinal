@@ -253,124 +253,119 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                           ),
                         ),
 
-                      // 4) Dots + Category bar
-                      Align(
-                        alignment: const Alignment(0, 0.48),
-                        child: IgnorePointer(
-                          ignoring: state.isDetailOpen,
-                          child: AnimatedOpacity(
-                            opacity: state.isDetailOpen ? 0 : 1,
-                            duration: const Duration(milliseconds: 160),
-                            child: ConstrainedBox(
-                              constraints:
-                                  const BoxConstraints(maxWidth: 560),
+                      // 4) Dots + Category bar + Controls - FIXED: Use Column with explicit spacing instead of fractional Alignment
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: SafeArea(
+                          minimum: const EdgeInsets.only(bottom: 16),
+                          child: IgnorePointer(
+                            ignoring: state.isDetailOpen,
+                            child: AnimatedOpacity(
+                              opacity: state.isDetailOpen ? 0 : 1,
+                              duration: const Duration(milliseconds: 180),
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  if (filtered.length > 1)
-                                    Padding(
-                                      padding:
-                                          const EdgeInsets.only(bottom: 8.0),
-                                      child: _DotsIndicator(
-                                        count: filtered.length,
-                                        active: safeIndex,
-                                        color: onSurface,
+                                  // Category bar section
+                                  Center(
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(maxWidth: 560),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (filtered.length > 1)
+                                            Padding(
+                                              padding: const EdgeInsets.only(bottom: 8.0),
+                                              child: _DotsIndicator(
+                                                count: filtered.length,
+                                                active: safeIndex,
+                                                color: onSurface,
+                                              ),
+                                            ),
+                                          const CategoryBar(),
+                                        ],
                                       ),
-                                    ),
-                                  const CategoryBar(),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // 5) Name + price/qty/note-pill/add
-                      Align(
-                        alignment: const Alignment(0, 0.78),
-                        child: IgnorePointer(
-                          ignoring: state.isDetailOpen,
-                          child: AnimatedOpacity(
-                            opacity: state.isDetailOpen ? 0 : 1,
-                            duration: const Duration(milliseconds: 180),
-                            child: ConstrainedBox(
-                              constraints:
-                                  const BoxConstraints(maxWidth: 520),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  AnimatedSwitcher(
-                                    duration:
-                                        const Duration(milliseconds: 180),
-                                    transitionBuilder: (c, a) =>
-                                        FadeTransition(
-                                      opacity: a,
-                                      child:
-                                          ScaleTransition(scale: a, child: c),
-                                    ),
-                                    child: Text(
-                                      current.name,
-                                      key: ValueKey(current.id),
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 18, // Increased from 16 for better mobile readability
-                                            color: onSurface,
-                                            letterSpacing: 0.2, // Slightly wider for clarity
-                                          ),
                                     ),
                                   ),
-                                  const SizedBox(height: 10), // Increased from 6 to match reference spacing
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        total.toStringAsFixed(3),
-                                        style: TextStyle(
-                                          color: onSurface,
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 20, // Increased from 18 for prominence
-                                          letterSpacing: 0.5, // Better digit spacing
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      _QtyStepper(
-                                        onSurface: onSurface,
-                                        qty: _qty,
-                                        onDec: () => setState(() =>
-                                            _qty = (_qty > 1) ? _qty - 1 : 1),
-                                        onInc: () => setState(() =>
-                                            _qty = (_qty < 99) ? _qty + 1 : 99),
-                                      ),
 
-                                      const SizedBox(width: 8),
-                                      _AddIconButton(
-                                        onSurface: onSurface,
-                                        enabled: !isFlying,
-                                        onTap: () => _handleAddToCart(
-                                          current,
-                                          qty: _qty,
-                                          note: _noteCtrl.text.trim(),
-                                        ),
-                                      ),
-                                    ],
-                              ),
-const SizedBox(height: 20), // Increased from 16 to match reference spacing
-Center(
-  child: _NotePill(
-    hasNote: _noteCtrl.text.trim().isNotEmpty,
-    onSurface: onSurface,
-    onTap: _openNoteSheet,
-  ),
-),
-// Add safe area padding for bottom (home indicator/notch)
-SizedBox(height: MediaQuery.of(context).padding.bottom > 0
-  ? MediaQuery.of(context).padding.bottom / 2
-  : 8),
+                                  // CRITICAL: Explicit spacing between category bar and controls
+                                  const SizedBox(height: 24),
 
+                                  // Name + price/qty/add section
+                                  Center(
+                                    child: ConstrainedBox(
+                                      constraints: const BoxConstraints(maxWidth: 520),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          AnimatedSwitcher(
+                                            duration: const Duration(milliseconds: 180),
+                                            transitionBuilder: (c, a) => FadeTransition(
+                                              opacity: a,
+                                              child: ScaleTransition(scale: a, child: c),
+                                            ),
+                                            child: Text(
+                                              current.name,
+                                              key: ValueKey(current.id),
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .titleMedium
+                                                  ?.copyWith(
+                                                    fontWeight: FontWeight.w700,
+                                                    fontSize: 18,
+                                                    color: onSurface,
+                                                    letterSpacing: 0.2,
+                                                  ),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: [
+                                              Text(
+                                                total.toStringAsFixed(3),
+                                                style: TextStyle(
+                                                  color: onSurface,
+                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 20,
+                                                  letterSpacing: 0.5,
+                                                ),
+                                              ),
+                                              const SizedBox(width: 12),
+                                              _QtyStepper(
+                                                onSurface: onSurface,
+                                                qty: _qty,
+                                                onDec: () => setState(() =>
+                                                    _qty = (_qty > 1) ? _qty - 1 : 1),
+                                                onInc: () => setState(() =>
+                                                    _qty = (_qty < 99) ? _qty + 1 : 99),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              _AddIconButton(
+                                                onSurface: onSurface,
+                                                enabled: !isFlying,
+                                                onTap: () => _handleAddToCart(
+                                                  current,
+                                                  qty: _qty,
+                                                  note: _noteCtrl.text.trim(),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 24),
+                                          Center(
+                                            child: _NotePill(
+                                              hasNote: _noteCtrl.text.trim().isNotEmpty,
+                                              onSurface: onSurface,
+                                              onTap: _openNoteSheet,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
