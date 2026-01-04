@@ -3,7 +3,8 @@
 <html lang="en"> <head> <!-- If you serve under a subpath, Flutter replaces this at build time. --> <base href="$FLUTTER_BASE_HREF" />
 <meta charset="UTF-8" />
 <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
-<!-- Flutter Web manages the viewport; omit to silence warnings -->
+<!-- CRITICAL: Viewport for proper mobile rendering -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover" />
 <meta name="description" content="Sweets PWA" />
 <meta name="theme-color" content="#ffffff" />
 

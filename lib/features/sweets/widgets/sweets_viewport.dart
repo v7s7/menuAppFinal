@@ -226,7 +226,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                           ),
                         ),
 
-                      // 3) Centered brand logo
+                      // 3) Centered brand logo (with safe area support)
                       if (logoUrl case final url?)
                         Align(
                           alignment: Alignment.topCenter,
@@ -236,17 +236,17 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                               padding: EdgeInsets.only(
                                 top: MediaQuery.of(context).padding.top +
                                     kToolbarHeight +
-                                    8,
+                                    16, // Increased from 8 to 16 for better spacing
                               ),
                               child: AnimatedOpacity(
                                 duration: const Duration(milliseconds: 180),
                                 opacity: state.isDetailOpen ? 0 : 1,
                                 child: _LogoCard(
                                   url: url,
-                                  box: 120,
-                                  icon: 100,
-                                  borderOpacity: 0.10,
-                                  fillOpacity: 0.06,
+                                  box: 110, // Slightly smaller from 120 to match reference
+                                  icon: 90, // Adjusted proportionally
+                                  borderOpacity: 0.15, // Increased visibility
+                                  fillOpacity: 0.12, // Darker background to match reference
                                 ),
                               ),
                             ),
@@ -316,12 +316,13 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                           .titleMedium
                                           ?.copyWith(
                                             fontWeight: FontWeight.w700,
-                                            fontSize: 16,
+                                            fontSize: 18, // Increased from 16 for better mobile readability
                                             color: onSurface,
+                                            letterSpacing: 0.2, // Slightly wider for clarity
                                           ),
                                     ),
                                   ),
-                                  const SizedBox(height: 6),
+                                  const SizedBox(height: 10), // Increased from 6 to match reference spacing
                                   Row(
                                     mainAxisAlignment:
                                         MainAxisAlignment.center,
@@ -331,7 +332,8 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                         style: TextStyle(
                                           color: onSurface,
                                           fontWeight: FontWeight.w800,
-                                          fontSize: 18,
+                                          fontSize: 20, // Increased from 18 for prominence
+                                          letterSpacing: 0.5, // Better digit spacing
                                         ),
                                       ),
                                       const SizedBox(width: 12),
@@ -356,7 +358,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                       ),
                                     ],
                               ),
-const SizedBox(height: 16),
+const SizedBox(height: 20), // Increased from 16 to match reference spacing
 Center(
   child: _NotePill(
     hasNote: _noteCtrl.text.trim().isNotEmpty,
@@ -364,6 +366,10 @@ Center(
     onTap: _openNoteSheet,
   ),
 ),
+// Add safe area padding for bottom (home indicator/notch)
+SizedBox(height: MediaQuery.of(context).padding.bottom > 0
+  ? MediaQuery.of(context).padding.bottom / 2
+  : 8),
 
                                 ],
                               ),
@@ -856,7 +862,7 @@ class _QtyStepper extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(8.0),
+          padding: const EdgeInsets.all(10.0), // Increased from 8 to 10 for ≥44px tap target
           child: Icon(icon, size: 22, color: onSurface),
         ),
       ),
@@ -882,13 +888,13 @@ class _AddIconButton extends StatelessWidget {
       child: OutlinedButton(
         style: OutlinedButton.styleFrom(
           shape: const CircleBorder(),
-          side: BorderSide(color: onSurface),
-          minimumSize: const Size(48, 48),
+          side: BorderSide(color: onSurface, width: 1.5), // Slightly thicker border for visibility
+          minimumSize: const Size(50, 50), // Increased from 48 to 50 for better touch target
           padding: EdgeInsets.zero,
           foregroundColor: onSurface,
         ),
         onPressed: enabled ? onTap : null,
-        child: const Icon(Icons.shopping_bag_outlined, size: 22),
+        child: const Icon(Icons.shopping_bag_outlined, size: 24), // Increased icon from 22 to 24
       ),
     );
   }
