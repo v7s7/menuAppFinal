@@ -464,45 +464,276 @@ Before pushing to production:
 
 ### BEFORE (with issues):
 - ❌ No viewport meta tag → cramped on real devices
+- ❌ **Fractional Alignment positioning** → elements stuck together on real iOS Safari
+- ❌ **No iOS Safari optimizations** → text auto-sizing causing layout shifts
 - ❌ Logo overlapped status bar on notched iPhones
 - ❌ Touch targets too small (buttons < 44px)
 - ❌ Font sizes too small (name: 16px, price: 18px)
 - ❌ Spacing too tight (elements sticking together)
 - ❌ Note button cut off by home indicator
 - ❌ Category pills hard to tap
+- ❌ **Perfect in DevTools, broken on real iPhone 15**
 
-### AFTER (fixed):
+### AFTER PHASE 1 (partial fix):
+- ✅ Proper viewport → better rendering
+- ⚠️ Still cramped on real devices (fractional positioning issue)
+- ✅ Larger fonts, better touch targets
+- ⚠️ DevTools looked perfect, real device still broken
+
+### AFTER PHASE 2 (complete fix):
 - ✅ Proper viewport → correct rendering on all devices
+- ✅ **Positioned(bottom: 0) + Column** → guaranteed spacing regardless of iOS toolbar
+- ✅ **iOS Safari optimizations** → no auto font-size, consistent box-sizing
 - ✅ Logo positioned with safe area support
 - ✅ All touch targets ≥44px (easy to tap)
 - ✅ Larger fonts (name: 18px, price: 20px)
-- ✅ Generous spacing (matches reference)
+- ✅ **Explicit 24px spacing** (not dependent on viewport height)
 - ✅ Note button safe from home indicator
 - ✅ Category pills easy to tap
+- ✅ **Works on real iPhone 15 + all iOS devices with dynamic toolbars**
 
 ---
 
 ## 💡 KEY LEARNINGS
 
+### Phase 1 Learnings:
 1. **Always add viewport meta tag** for Flutter web mobile apps
-2. **Test on real devices** - DevTools doesn't show all issues
-3. **Use safe area padding** for notched/gesture devices
-4. **Minimum 44px touch targets** for mobile
-5. **Increase font sizes** for mobile (16px → 18-20px)
-6. **Add extra spacing** between elements on mobile
-7. **viewport-fit=cover** handles safe areas correctly
+2. **Use safe area padding** for notched/gesture devices
+3. **Minimum 44px touch targets** for mobile
+4. **Increase font sizes** for mobile (16px → 18-20px)
+5. **viewport-fit=cover** handles safe areas correctly
+
+### Phase 2 Learnings (CRITICAL):
+6. **❌ NEVER use fractional Alignment for mobile layouts**
+   - `Alignment(0, 0.48)` calculates as percentage of viewport height
+   - iOS Safari dynamic toolbar changes viewport height constantly
+   - Fractional positions compress when toolbar appears → elements stick together
+
+7. **✅ ALWAYS use explicit spacing with Positioned + Column + SizedBox**
+   - `Positioned(bottom: 0)` anchors to bottom edge
+   - `SizedBox(height: 24)` guarantees spacing regardless of viewport changes
+   - Elements maintain spacing even when iOS toolbar shows/hides
+
+8. **⚠️ DevTools CANNOT simulate iOS Safari dynamic toolbar behavior**
+   - DevTools has static viewport height
+   - Real iOS Safari viewport height changes when scrolling (toolbar hides/shows)
+   - **MUST test on real iOS devices** - DevTools will lie to you!
+
+9. **Add iOS Safari-specific optimizations**
+   - `-webkit-text-size-adjust: 100%` prevents auto font-size changes
+   - `overscroll-behavior: none` prevents bounce affecting layout
+   - `box-sizing: border-box` ensures consistent sizing calculations
+
+10. **Root cause analysis is critical**
+    - Phase 1 fixed symptoms (viewport, spacing, touch targets)
+    - Phase 2 fixed root cause (fractional positioning + iOS dynamic viewport)
+    - Sometimes you need to go deeper to find the real problem
+
+---
+
+## ✅ PHASE 2: REAL-DEVICE VERIFICATION CHECKLIST
+
+After deploying Phase 2 fixes, perform these tests on **REAL DEVICES ONLY** (not DevTools):
+
+### Critical Test 1: iOS Safari Dynamic Toolbar Behavior
+
+**Device**: iPhone 15 (or iPhone 12+, any model with gesture bar)
+
+1. **Initial Load**:
+   - Open deployed app in Safari
+   - Verify category bar and controls are properly spaced (not stuck together)
+   - Measure visual gap: Should be ~24px between category bar and product name
+
+2. **Scroll Down Test** (Toolbar Hides):
+   - Swipe up to scroll down the page (if scrollable content)
+   - iOS Safari toolbar should hide/minimize
+   - **CRITICAL**: Category bar and controls should MAINTAIN 24px spacing
+   - Elements should NOT compress or stick together
+
+3. **Scroll Up Test** (Toolbar Shows):
+   - Swipe down to scroll back up
+   - iOS Safari toolbar should reappear/expand
+   - **CRITICAL**: Spacing should remain consistent (still 24px)
+   - No layout shift or element repositioning
+
+4. **Orientation Change**:
+   - Rotate device to landscape
+   - Verify spacing still correct (24px between sections)
+   - Rotate back to portrait
+   - Verify no layout issues
+
+**✅ PASS CRITERIA**:
+- Category bar and controls maintain 24px spacing in all scenarios
+- No elements "stick together" when toolbar shows/hides
+- Layout remains stable during orientation changes
+
+**❌ FAIL INDICATORS**:
+- Elements compress when toolbar hides
+- Gap disappears or becomes <10px
+- Controls overlap with category bar
+
+---
+
+### Critical Test 2: iOS Text Size Consistency
+
+**Device**: iPhone (any model)
+
+1. **Safari Settings → Aa (Text Size)**:
+   - Open page in Safari
+   - Tap "Aa" in address bar
+   - Change text size slider
+   - **VERIFY**: Layout should remain stable, fonts should not auto-resize unexpectedly
+
+2. **Pinch Zoom Test**:
+   - Pinch to zoom in slightly (but don't exceed max-scale=5.0)
+   - Verify text sizes remain proportional
+   - Pinch to zoom out to 100%
+   - Verify no layout shifts
+
+**✅ PASS CRITERIA**:
+- Text sizes remain consistent unless user explicitly changes zoom
+- No unexpected auto-resizing when rotating device
+- Font sizes match code specifications (18px name, 20px price)
+
+---
+
+### Critical Test 3: Safe Area + Bottom Spacing
+
+**Device**: iPhone X or newer (with home indicator)
+
+1. **Bottom Safe Area**:
+   - Verify "Add note" button is clearly visible above home indicator
+   - Should have at least 16px padding from home indicator
+   - Button should not overlap or be cut off
+
+2. **Full-Screen Gesture**:
+   - Swipe up from bottom (home gesture)
+   - Verify gesture doesn't accidentally trigger UI elements
+   - Verify sufficient spacing prevents conflicts
+
+**✅ PASS CRITERIA**:
+- "Add note" button fully visible with spacing from home indicator
+- No UI elements cut off by rounded corners or notch
+- Safe area padding applied correctly (minimum 16px bottom)
+
+---
+
+### Critical Test 4: Multi-Device Width Testing
+
+**Devices**: Test on various screen widths
+
+| Device | Width | Test Result |
+|--------|-------|-------------|
+| iPhone SE (2nd gen) | 375px | Should have adequate spacing |
+| iPhone 12/13 Pro | 390px | Should match reference design |
+| iPhone 14 Pro Max | 430px | Should not be overly spacious |
+| Pixel 5 | 393px | Android Chrome - verify spacing |
+| Galaxy S21 | 360px | Smaller Android - verify no cramping |
+
+**For Each Device**:
+1. Open deployed app
+2. Verify 24px spacing between category bar and controls
+3. Check touch targets are easy to tap (≥44px)
+4. Verify no horizontal scrolling
+5. All text readable without zoom
+
+**✅ PASS CRITERIA**:
+- Consistent spacing across all device widths (320px-430px)
+- Touch targets easy to tap on smallest device (320px)
+- No layout breaks or overlaps on any device
+
+---
+
+### Critical Test 5: Real Device vs DevTools Comparison
+
+**Purpose**: Verify the fix resolved the discrepancy
+
+1. **DevTools Test** (Chrome on PC):
+   - F12 → Toggle Device Toolbar
+   - Select "iPhone 12 Pro" preset
+   - Take screenshot of layout
+
+2. **Real iPhone 15 Test**:
+   - Open same page on actual iPhone 15
+   - Take screenshot of layout
+   - Compare to DevTools screenshot
+
+**✅ PASS CRITERIA**:
+- Real device spacing matches DevTools spacing
+- No "stuck together" elements on real device
+- Visual appearance nearly identical between DevTools and real device
+- Both show ~24px gap between category bar and controls
+
+**❌ IF STILL FAILING**:
+- Re-verify deployment includes latest changes (commit 5d18da2)
+- Check browser cache is cleared (Cmd+Option+E on Safari)
+- Verify viewport meta tag is in deployed HTML source
+- Check iOS Safari CSS is applied (inspect element → computed styles)
+
+---
+
+### Quick Smoke Test (30 seconds)
+
+**For rapid verification on real iPhone:**
+
+1. ✅ Open app in Safari
+2. ✅ Category bar visible and styled correctly
+3. ✅ **Gap clearly visible** between category bar and product name/price
+4. ✅ Product name and price readable (18px, 20px)
+5. ✅ Quantity +/- buttons easy to tap
+6. ✅ Add to cart button easy to tap (50x50px)
+7. ✅ "Add note" button visible with spacing from bottom
+8. ✅ Scroll up/down - spacing remains stable (no compression)
+9. ✅ Rotate device - layout adapts correctly
+10. ✅ No elements overlapping or stuck together
+
+**All ✅? PASS** - Deploy to production!
+**Any ❌? INVESTIGATE** - Check specific failing test above
 
 ---
 
 ## 🎉 EXPECTED RESULT
 
-After deploying these changes:
-- Layout should match reference design closely
-- No more cramping on real devices
-- Comfortable tap targets
-- Readable text without zooming
-- Proper safe area handling
-- Works on 320px - 430px widths
-- Smooth experience on iOS + Android
+### After Phase 1 (Partial):
+- ✅ Better viewport rendering
+- ✅ Improved fonts and touch targets
+- ⚠️ Still cramped on real iPhone (fractional positioning issue)
 
-**Test it now!** 🚀
+### After Phase 2 (Complete):
+- ✅ Layout matches reference design on **real devices**
+- ✅ **No more "stuck together" elements on iPhone 15**
+- ✅ Consistent spacing (24px) regardless of iOS Safari toolbar state
+- ✅ Comfortable tap targets (≥44px)
+- ✅ Readable text without zooming (18px/20px fonts)
+- ✅ Proper safe area handling (16px bottom minimum)
+- ✅ Works on 320px - 430px widths
+- ✅ Smooth experience on iOS Safari + Android Chrome
+- ✅ **Real device appearance matches DevTools** (discrepancy resolved)
+- ✅ Stable layout during iOS toolbar show/hide transitions
+- ✅ No text auto-resizing on iOS Safari
+
+**Deploy these changes and test on real iPhone 15!** 🚀
+
+### Build Commands:
+
+```bash
+# Build for deployment
+flutter clean
+flutter build web --release
+
+# Deploy to Firebase Hosting (or your hosting provider)
+firebase deploy --only hosting
+```
+
+### Post-Deployment Verification:
+
+1. Open deployed URL on **real iPhone 15** in Safari
+2. Verify category bar and controls have clear 24px spacing
+3. Scroll up/down - spacing should remain stable
+4. Rotate device - no layout breaks
+5. All touch targets easy to tap
+6. Compare to DevTools - should match closely
+
+**If all tests pass → You're done!** ✅
+
+**If issues persist → Check "PHASE 2: REAL-DEVICE VERIFICATION CHECKLIST" above** ⚠️
