@@ -226,7 +226,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                           ),
                         ),
 
-                      // 3) Centered brand logo (with safe area support)
+                      // 3) Centered brand logo (with safe area support) - MOVED UP to use top space
                       if (logoUrl case final url?)
                         Align(
                           alignment: Alignment.topCenter,
@@ -235,18 +235,18 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                             child: Padding(
                               padding: EdgeInsets.only(
                                 top: MediaQuery.of(context).padding.top +
-                                    kToolbarHeight +
-                                    16, // Increased from 8 to 16 for better spacing
+                                    kToolbarHeight -
+                                    8, // REDUCED: Use space above logo (was +16, now -8)
                               ),
                               child: AnimatedOpacity(
                                 duration: const Duration(milliseconds: 180),
                                 opacity: state.isDetailOpen ? 0 : 1,
                                 child: _LogoCard(
                                   url: url,
-                                  box: 110, // Slightly smaller from 120 to match reference
-                                  icon: 90, // Adjusted proportionally
-                                  borderOpacity: 0.15, // Increased visibility
-                                  fillOpacity: 0.12, // Darker background to match reference
+                                  box: 100, // Smaller to fit better
+                                  icon: 82, // Adjusted proportionally
+                                  borderOpacity: 0.18, // More visible
+                                  fillOpacity: 0.15, // More visible background
                                 ),
                               ),
                             ),
@@ -259,7 +259,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                         right: 0,
                         bottom: 0,
                         child: SafeArea(
-                          minimum: const EdgeInsets.only(bottom: 16),
+                          minimum: const EdgeInsets.only(bottom: 24), // INCREASED: 16 → 24 to use bottom space better
                           child: IgnorePointer(
                             ignoring: state.isDetailOpen,
                             child: AnimatedOpacity(
@@ -290,8 +290,8 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                     ),
                                   ),
 
-                                  // CRITICAL: Explicit spacing between category bar and controls
-                                  const SizedBox(height: 24),
+                                  // CRITICAL: More spacing between category bar and name (was 24, now 36)
+                                  const SizedBox(height: 36),
 
                                   // Name + price/qty/add section
                                   Center(
@@ -300,27 +300,37 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                       child: Column(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
+                                          // Product name - MORE PROMINENT AND VISIBLE
                                           AnimatedSwitcher(
                                             duration: const Duration(milliseconds: 180),
                                             transitionBuilder: (c, a) => FadeTransition(
                                               opacity: a,
                                               child: ScaleTransition(scale: a, child: c),
                                             ),
-                                            child: Text(
-                                              current.name,
+                                            child: Container(
                                               key: ValueKey(current.id),
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .titleMedium
-                                                  ?.copyWith(
-                                                    fontWeight: FontWeight.w700,
-                                                    fontSize: 18,
-                                                    color: onSurface,
-                                                    letterSpacing: 0.2,
-                                                  ),
+                                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                              decoration: BoxDecoration(
+                                                color: onSurface.withOpacity(0.08), // Subtle background to make text stand out
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                current.name,
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .titleMedium
+                                                    ?.copyWith(
+                                                      fontWeight: FontWeight.w700,
+                                                      fontSize: 20, // BIGGER: 18 → 20 for better visibility
+                                                      color: onSurface,
+                                                      letterSpacing: 0.3, // Wider spacing for clarity
+                                                      height: 1.3, // Better line height
+                                                    ),
+                                                textAlign: TextAlign.center,
+                                              ),
                                             ),
                                           ),
-                                          const SizedBox(height: 12),
+                                          const SizedBox(height: 16), // INCREASED: 12 → 16 for better separation
                                           Row(
                                             mainAxisAlignment: MainAxisAlignment.center,
                                             children: [
@@ -354,7 +364,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                               ),
                                             ],
                                           ),
-                                          const SizedBox(height: 24),
+                                          const SizedBox(height: 28), // INCREASED: 24 → 28 for better spacing
                                           Center(
                                             child: _NotePill(
                                               hasNote: _noteCtrl.text.trim().isNotEmpty,
@@ -362,6 +372,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                               onTap: _openNoteSheet,
                                             ),
                                           ),
+                                          const SizedBox(height: 20), // ADDED: Extra bottom spacing to use available space
                                         ],
                                       ),
                                     ),
