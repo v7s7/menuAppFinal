@@ -1,6 +1,8 @@
 {
-  "firestore": { "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json" },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
   "functions": [
     {
       "source": "functions",
@@ -33,29 +35,62 @@
       {
         "source": "/index.html",
         "headers": [
-          { "key": "Cache-Control", "value": "no-store, max-age=0, must-revalidate" }
+          {
+            "key": "Cache-Control",
+            "value": "no-store, max-age=0, must-revalidate"
+          }
+        ]
+      },
+      {
+        "source": "/merchant/index.html",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store, max-age=0, must-revalidate"
+          }
         ]
       },
       {
         "source": "**/*.@(js|css)",
         "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
         ]
       },
       {
         "source": "assets/**",
         "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "source": "merchant/assets/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
         ]
       },
       {
         "source": "**/*.@(png|jpg|jpeg|gif|svg|webp|ico|woff|woff2|eot|ttf|otf)",
         "headers": [
-          { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
         ]
       }
     ],
     "rewrites": [
+      { "source": "/merchant", "destination": "/merchant/index.html" },
+      { "source": "/merchant/**", "destination": "/merchant/index.html" },
+      { "source": "/s/**", "destination": "/index.html" },
       { "source": "**", "destination": "/index.html" }
     ]
   },

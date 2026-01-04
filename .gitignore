@@ -10,3 +10,8 @@ android/.gradle/
 ios/Pods/
 *.iml
 scripts/serviceAccount.json
+.firebase/
+build/
+.dart_tool/
+.pub/
+node_modules/
