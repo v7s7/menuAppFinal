@@ -20,11 +20,13 @@ final checkoutPointsToUseProvider = StateProvider<int>((ref) => 0);
 /// Widget for loyalty checkout (phone, car plate, points)
 class LoyaltyCheckoutWidget extends ConsumerStatefulWidget {
   final double orderTotal; // Current order total before discount
+  final ScrollController scrollController;
   final Function(CheckoutData) onCheckoutDataChanged;
 
   const LoyaltyCheckoutWidget({
     super.key,
     required this.orderTotal,
+    required this.scrollController,
     required this.onCheckoutDataChanged,
   });
 
@@ -44,11 +46,64 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
   final _carPlateController = TextEditingController();
   final _pointsController = TextEditingController(text: '0');
 
+  // Focus nodes for auto-scroll behavior
+  final _phoneFocusNode = FocusNode();
+  final _carPlateFocusNode = FocusNode();
+  final _pointsFocusNode = FocusNode();
+
+  // Keys for scroll positioning
+  final _phoneKey = GlobalKey();
+  final _carPlateKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Add focus listeners for phone field
+    _phoneFocusNode.addListener(() {
+      if (_phoneFocusNode.hasFocus) {
+        _scrollToField(_phoneKey);
+      }
+    });
+
+    // Add focus listeners for car plate field
+    _carPlateFocusNode.addListener(() {
+      if (_carPlateFocusNode.hasFocus) {
+        _scrollToField(_carPlateKey);
+      }
+    });
+
+    // Add focus listeners for points field
+    _pointsFocusNode.addListener(() {
+      if (_pointsFocusNode.hasFocus) {
+        // Points field will scroll naturally
+      }
+    });
+  }
+
+  void _scrollToField(GlobalKey key) {
+    // Delay to allow keyboard to open
+    Future.delayed(const Duration(milliseconds: 300), () {
+      final context = key.currentContext;
+      if (context != null && mounted) {
+        Scrollable.ensureVisible(
+          context,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          alignment: 0.2, // Position field 20% from top of visible area
+        );
+      }
+    });
+  }
+
   @override
   void dispose() {
     _phoneNumberController.dispose();
     _carPlateController.dispose();
     _pointsController.dispose();
+    _phoneFocusNode.dispose();
+    _carPlateFocusNode.dispose();
+    _pointsFocusNode.dispose();
     super.dispose();
   }
 
@@ -90,23 +145,26 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
             const SizedBox(height: 16),
 
             // Phone Number Input (WITH FLAG + COUNTRY PICKER)
-            IntlPhoneField(
-              controller: _phoneNumberController,
-              initialCountryCode: 'BH',
-              showCountryFlag: true,
-              showDropdownIcon: true,
-              dropdownIconPosition: IconPosition.trailing,
-              flagsButtonPadding: const EdgeInsets.only(left: 8, right: 8),
-              decoration: InputDecoration(
-                labelText: 'Phone Number',
-                hintText: '${'X' * _maxDigits}',
-                prefixIcon: const Icon(Icons.phone),
-                border: const OutlineInputBorder(),
-                helperText: '$_maxDigits digits',
-              ),
-              keyboardType: TextInputType.phone,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              autovalidateMode: AutovalidateMode.onUserInteraction,
+            Container(
+              key: _phoneKey,
+              child: IntlPhoneField(
+                controller: _phoneNumberController,
+                focusNode: _phoneFocusNode,
+                initialCountryCode: 'BH',
+                showCountryFlag: true,
+                showDropdownIcon: true,
+                dropdownIconPosition: IconPosition.trailing,
+                flagsButtonPadding: const EdgeInsets.only(left: 8, right: 8),
+                decoration: InputDecoration(
+                  labelText: 'Phone Number',
+                  hintText: '${'X' * _maxDigits}',
+                  prefixIcon: const Icon(Icons.phone),
+                  border: const OutlineInputBorder(),
+                  helperText: '$_maxDigits digits',
+                ),
+                keyboardType: TextInputType.phone,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                autovalidateMode: AutovalidateMode.onUserInteraction,
               validator: (PhoneNumber? phone) {
                 final digits = (phone?.number ?? '').replaceAll(RegExp(r'\D'), '');
                 final dial = phone?.countryCode ?? _selectedDialCode;
@@ -148,13 +206,16 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
                 ref.read(checkoutPhoneProvider.notifier).state = _e164Phone;
                 _updateCheckoutData(settings);
               },
+              ),
             ),
 
             const SizedBox(height: 12),
 
             // Car Plate Input (Required)
             TextField(
+              key: _carPlateKey,
               controller: _carPlateController,
+              focusNode: _carPlateFocusNode,
               decoration: const InputDecoration(
                 labelText: 'Car Plate',
                 hintText: 'e.g., 12345',
@@ -162,6 +223,7 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
                 border: OutlineInputBorder(),
               ),
               textCapitalization: TextCapitalization.characters,
+              textInputAction: TextInputAction.done,
               maxLength: 7,
               onChanged: (value) {
                 ref.read(checkoutCarPlateProvider.notifier).state = value;
@@ -332,6 +394,8 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: _pointsController,
+                    focusNode: _pointsFocusNode,
+                    textInputAction: TextInputAction.done,
                     decoration: InputDecoration(
                       labelText: 'Points to Use',
                       hintText: 'Enter points (max: ${currentPoints.clamp(0, maxUsablePoints)})',

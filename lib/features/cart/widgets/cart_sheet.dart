@@ -33,6 +33,14 @@ class _CartSheetState extends ConsumerState<CartSheet> {
     discount: 0,
   );
 
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   Future<void> _confirmOrder(BuildContext context, List<CartLine> lines, double subtotal) async {
     try {
       // ALWAYS validate phone number and car plate (for car identification)
@@ -232,10 +240,14 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                 ),
               );
 
+        // Get keyboard height for proper padding
+        final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+
         return SafeArea(
           top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 16 + keyboardHeight),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -278,13 +290,12 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                     ),
                   )
                 else
-                  Flexible(
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: lines.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (context, i) => _CartRow(line: lines[i]),
-                    ),
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: lines.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, i) => _CartRow(line: lines[i]),
                   ),
 
                 const SizedBox(height: 16),
@@ -292,6 +303,7 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                 // Loyalty checkout widget
                 LoyaltyCheckoutWidget(
                   orderTotal: subtotal,
+                  scrollController: _scrollController,
                   onCheckoutDataChanged: (data) {
                     setState(() => _checkoutData = data);
                   },
