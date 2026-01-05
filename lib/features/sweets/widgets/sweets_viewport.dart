@@ -182,6 +182,16 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
 
         final bool isFlying = _flyEntry != null;
 
+        // ==================== LAYOUT TWEAK CONSTANTS ====================
+        // Adjust these values to fine-tune spacing and sizing
+        const double productMaxHeight = 380;      // Maximum height for product image
+        const double productBottomGap = 16;       // Gap between product and dots/category
+        const double dotsBottomGap = 12;          // Gap between dots and category bar
+        const double categoryBottomGap = 16;      // Gap between category bar and product name
+        const double nameBottomGap = 10;          // Gap between product name and price/qty row
+        const double controlsBottomGap = 14;      // Gap between controls and "Add note" button
+        // ================================================================
+
         return DefaultTextStyle.merge(
           style:
               Theme.of(context).textTheme.bodyMedium!.copyWith(color: onSurface),
@@ -189,28 +199,33 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
             data: IconThemeData(color: onSurface),
             child: Column(
               children: [
-                Expanded(
+                Flexible(
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      // 1) Carousel isolated to reduce rebuilds
-                      _Carousel(
-                        controller: _pc,
-                        sweets: filtered,
-                        isDetailOpen: state.isDetailOpen,
-                        hostImageKey: _activeImageKey,
-                        onImageTap: () => ref
-                            .read(sweetsControllerProvider.notifier)
-                            .toggleDetail(),
-                        onIndexChanged: (i) {
-                          ref
+                      // 1) Product Carousel with MAX HEIGHT constraint
+                      Container(
+                        constraints: const BoxConstraints(
+                          maxHeight: productMaxHeight,
+                        ),
+                        child: _Carousel(
+                          controller: _pc,
+                          sweets: filtered,
+                          isDetailOpen: state.isDetailOpen,
+                          hostImageKey: _activeImageKey,
+                          onImageTap: () => ref
                               .read(sweetsControllerProvider.notifier)
-                              .setIndex((i % filtered.length).toInt());
-                          setState(() {
-                            _qty = 1;
-                            _noteCtrl.clear(); // reset note per product
-                          });
-                        },
+                              .toggleDetail(),
+                          onIndexChanged: (i) {
+                            ref
+                                .read(sweetsControllerProvider.notifier)
+                                .setIndex((i % filtered.length).toInt());
+                            setState(() {
+                              _qty = 1;
+                              _noteCtrl.clear(); // reset note per product
+                            });
+                          },
+                        ),
                       ),
 
                       // 2) Mask right half when detail is open
@@ -252,163 +267,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                           ),
                         ),
 
-                      // 4) Bottom UI Section - PROTECTED from overlapping product image
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        child: SafeArea(
-                          minimum: const EdgeInsets.only(bottom: 16), // COMPACT for more product space
-                          child: IgnorePointer(
-                            ignoring: state.isDetailOpen,
-                            child: AnimatedOpacity(
-                              opacity: state.isDetailOpen ? 0 : 1,
-                              duration: const Duration(milliseconds: 180),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  // PRODUCT SAFE BOX: Generous top padding to prevent overlap
-                                  const SizedBox(height: 20),
-
-                                  // iOS Glass Container for Dots + Category bar
-                                  Center(
-                                    child: ConstrainedBox(
-                                      constraints: const BoxConstraints(maxWidth: 560),
-                                      child: ClipRRect(
-                                        borderRadius: BorderRadius.circular(20),
-                                        child: BackdropFilter(
-                                          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              color: surface.withOpacity(0.7), // iOS-style translucent
-                                              borderRadius: BorderRadius.circular(20),
-                                              border: Border.all(
-                                                color: onSurface.withOpacity(0.1),
-                                                width: 0.5,
-                                              ),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: Colors.black.withOpacity(0.05),
-                                                  blurRadius: 10,
-                                                  offset: const Offset(0, 2),
-                                                ),
-                                              ],
-                                            ),
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 12,
-                                              vertical: 12,
-                                            ),
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                // Pagination dots (if multiple products)
-                                                if (filtered.length > 1)
-                                                  Padding(
-                                                    padding: const EdgeInsets.only(bottom: 10.0),
-                                                    child: _DotsIndicator(
-                                                      count: filtered.length,
-                                                      active: safeIndex,
-                                                      color: onSurface,
-                                                    ),
-                                                  ),
-
-                                                const CategoryBar(),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-
-                                  // Tighter spacing to bottom info group
-                                  const SizedBox(height: 14),
-
-                                  // Name + price/qty/add section - TIGHT GROUP
-                                  Center(
-                                    child: ConstrainedBox(
-                                      constraints: const BoxConstraints(maxWidth: 520),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          // Product name - COMPACT & CLEAN
-                                          AnimatedSwitcher(
-                                            duration: const Duration(milliseconds: 180),
-                                            transitionBuilder: (c, a) => FadeTransition(
-                                              opacity: a,
-                                              child: ScaleTransition(scale: a, child: c),
-                                            ),
-                                            child: Text(
-                                              current.name,
-                                              key: ValueKey(current.id),
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .titleMedium
-                                                  ?.copyWith(
-                                                    fontWeight: FontWeight.w700,
-                                                    fontSize: 16,
-                                                    color: onSurface,
-                                                    letterSpacing: 0.2,
-                                                    height: 1.1,
-                                                  ),
-                                              textAlign: TextAlign.center,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 8), // TIGHTER (was 10)
-                                          Row(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                              Text(
-                                                total.toStringAsFixed(3),
-                                                style: TextStyle(
-                                                  color: onSurface,
-                                                  fontWeight: FontWeight.w800,
-                                                  fontSize: 16,
-                                                  letterSpacing: 0.2,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 10),
-                                              _QtyStepper(
-                                                onSurface: onSurface,
-                                                qty: _qty,
-                                                onDec: () => setState(() =>
-                                                    _qty = (_qty > 1) ? _qty - 1 : 1),
-                                                onInc: () => setState(() =>
-                                                    _qty = (_qty < 99) ? _qty + 1 : 99),
-                                              ),
-                                              const SizedBox(width: 6),
-                                              _AddIconButton(
-                                                onSurface: onSurface,
-                                                enabled: !isFlying,
-                                                onTap: () => _handleAddToCart(
-                                                  current,
-                                                  qty: _qty,
-                                                  note: _noteCtrl.text.trim(),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 12), // TIGHTER (was 16)
-                                          Center(
-                                            child: _NotePill(
-                                              hasNote: _noteCtrl.text.trim().isNotEmpty,
-                                              onSurface: onSurface,
-                                              onTap: _openNoteSheet,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 10), // TIGHTER (was 12)
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // 6) Nutrition panel (right)
+                      // 4) Nutrition panel (right)
                       Align(
                         alignment: Alignment.centerRight,
                         child: Padding(
@@ -464,6 +323,174 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                     ],
                   ),
                 ),
+
+                // ==================== BOTTOM UI - NORMAL FLOW (NO OVERLAY) ====================
+
+                // GUARANTEED GAP - Product Safe Box Boundary
+                SizedBox(height: productBottomGap),
+
+                // SECTION 2: PAGINATION DOTS
+                if (filtered.length > 1) ...[
+                  IgnorePointer(
+                    ignoring: state.isDetailOpen,
+                    child: AnimatedOpacity(
+                      opacity: state.isDetailOpen ? 0 : 1,
+                      duration: const Duration(milliseconds: 180),
+                      child: _DotsIndicator(
+                        count: filtered.length,
+                        active: safeIndex,
+                        color: onSurface,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: dotsBottomGap),
+                ],
+
+                // SECTION 3: iOS GLASS CATEGORY BAR
+                IgnorePointer(
+                  ignoring: state.isDetailOpen,
+                  child: AnimatedOpacity(
+                    opacity: state.isDetailOpen ? 0 : 1,
+                    duration: const Duration(milliseconds: 180),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: surface.withOpacity(0.7),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: onSurface.withOpacity(0.1),
+                                  width: 0.5,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.05),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                              child: const CategoryBar(),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                SizedBox(height: categoryBottomGap),
+
+                // SECTION 4: PRODUCT NAME
+                IgnorePointer(
+                  ignoring: state.isDetailOpen,
+                  child: AnimatedOpacity(
+                    opacity: state.isDetailOpen ? 0 : 1,
+                    duration: const Duration(milliseconds: 180),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      transitionBuilder: (c, a) => FadeTransition(
+                        opacity: a,
+                        child: ScaleTransition(scale: a, child: c),
+                      ),
+                      child: Text(
+                        current.name,
+                        key: ValueKey(current.id),
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                              color: onSurface,
+                              letterSpacing: 0.2,
+                              height: 1.1,
+                            ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                ),
+
+                SizedBox(height: nameBottomGap),
+
+                // SECTION 5: PRICE + QTY + ADD CART ROW
+                IgnorePointer(
+                  ignoring: state.isDetailOpen,
+                  child: AnimatedOpacity(
+                    opacity: state.isDetailOpen ? 0 : 1,
+                    duration: const Duration(milliseconds: 180),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          total.toStringAsFixed(3),
+                          style: TextStyle(
+                            color: onSurface,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        _QtyStepper(
+                          onSurface: onSurface,
+                          qty: _qty,
+                          onDec: () => setState(() =>
+                              _qty = (_qty > 1) ? _qty - 1 : 1),
+                          onInc: () => setState(() =>
+                              _qty = (_qty < 99) ? _qty + 1 : 99),
+                        ),
+                        const SizedBox(width: 6),
+                        _AddIconButton(
+                          onSurface: onSurface,
+                          enabled: !isFlying,
+                          onTap: () => _handleAddToCart(
+                            current,
+                            qty: _qty,
+                            note: _noteCtrl.text.trim(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                SizedBox(height: controlsBottomGap),
+
+                // SECTION 6: ADD NOTE BUTTON
+                IgnorePointer(
+                  ignoring: state.isDetailOpen,
+                  child: AnimatedOpacity(
+                    opacity: state.isDetailOpen ? 0 : 1,
+                    duration: const Duration(milliseconds: 180),
+                    child: Center(
+                      child: _NotePill(
+                        hasNote: _noteCtrl.text.trim().isNotEmpty,
+                        onSurface: onSurface,
+                        onTap: _openNoteSheet,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Bottom safe area padding
+                SizedBox(
+                  height: MediaQuery.of(context).padding.bottom > 0
+                      ? MediaQuery.of(context).padding.bottom + 8
+                      : 16,
+                ),
+
+                // ==================== END BOTTOM UI ====================
               ],
             ),
           ),
