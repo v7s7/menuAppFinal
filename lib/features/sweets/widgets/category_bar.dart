@@ -105,19 +105,19 @@ class _GlassCategoryBarState extends ConsumerState<GlassCategoryBar> {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
                 curve: Curves.easeOut,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), // Increased padding for better touch
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7), // COMPACT (was 16, 10)
                 decoration: BoxDecoration(
                   color: bg,
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: border, width: 1.0), // Explicit border width
+                  border: Border.all(color: border, width: 1.0),
                 ),
                 child: Text(
                   label,
                   style: TextStyle(
-                    fontSize: 14, // Increased from 13 for better mobile readability
+                    fontSize: 13, // COMPACT (was 14)
                     fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                     color: txt,
-                    letterSpacing: 0.1, // Slight spacing for clarity
+                    letterSpacing: 0.1,
                   ),
                 ),
               ),
@@ -133,7 +133,7 @@ class _GlassCategoryBarState extends ConsumerState<GlassCategoryBar> {
             controller: controller,
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10), // Increased padding for better spacing
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), // COMPACT (was vertical: 10)
             child: Row(children: children),
           );
         }

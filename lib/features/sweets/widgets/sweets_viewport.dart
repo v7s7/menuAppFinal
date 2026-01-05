@@ -226,7 +226,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                           ),
                         ),
 
-                      // 3) Centered brand logo - HIGH POSITION (matches Photo 2)
+                      // 3) Centered brand logo - POSITIONED HIGH (close to header)
                       if (logoUrl case final url?)
                         Align(
                           alignment: Alignment.topCenter,
@@ -234,15 +234,15 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                             ignoring: true,
                             child: Padding(
                               padding: EdgeInsets.only(
-                                top: MediaQuery.of(context).padding.top + 60, // Higher positioning with breathing room
+                                top: MediaQuery.of(context).padding.top + 16, // CLOSE to header (was 60)
                               ),
                               child: AnimatedOpacity(
                                 duration: const Duration(milliseconds: 180),
                                 opacity: state.isDetailOpen ? 0 : 1,
                                 child: _LogoCard(
                                   url: url,
-                                  box: 100,
-                                  icon: 82,
+                                  box: 90, // Slightly smaller (was 100)
+                                  icon: 74, // Adjusted proportionally
                                   borderOpacity: 0.18,
                                   fillOpacity: 0.15,
                                 ),
@@ -257,7 +257,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                         right: 0,
                         bottom: 0,
                         child: SafeArea(
-                          minimum: const EdgeInsets.only(bottom: 24), // INCREASED: 16 → 24 to use bottom space better
+                          minimum: const EdgeInsets.only(bottom: 16), // COMPACT for more product space
                           child: IgnorePointer(
                             ignoring: state.isDetailOpen,
                             child: AnimatedOpacity(
@@ -288,17 +288,17 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                     ),
                                   ),
 
-                                  // Balanced spacing between category bar and product name (Photo 2)
-                                  const SizedBox(height: 28),
+                                  // Compact spacing for more product breathing room
+                                  const SizedBox(height: 20),
 
-                                  // Name + price/qty/add section
+                                  // Name + price/qty/add section - COMPACT
                                   Center(
                                     child: ConstrainedBox(
                                       constraints: const BoxConstraints(maxWidth: 520),
                                       child: Column(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          // Product name - CLEAN MODERN TEXT (matches Photo 2)
+                                          // Product name - COMPACT & CLEAN
                                           AnimatedSwitcher(
                                             duration: const Duration(milliseconds: 180),
                                             transitionBuilder: (c, a) => FadeTransition(
@@ -313,15 +313,15 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                                   .titleMedium
                                                   ?.copyWith(
                                                     fontWeight: FontWeight.w700,
-                                                    fontSize: 18, // Clean readable size
+                                                    fontSize: 16, // SMALLER (was 18) for compact UI
                                                     color: onSurface,
                                                     letterSpacing: 0.2,
-                                                    height: 1.2,
+                                                    height: 1.1, // Tighter (was 1.2)
                                                   ),
                                               textAlign: TextAlign.center,
                                             ),
                                           ),
-                                          const SizedBox(height: 14), // Balanced spacing
+                                          const SizedBox(height: 12), // Tighter (was 14)
                                           Row(
                                             mainAxisAlignment: MainAxisAlignment.center,
                                             children: [
@@ -330,8 +330,8 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                                 style: TextStyle(
                                                   color: onSurface,
                                                   fontWeight: FontWeight.w800,
-                                                  fontSize: 20,
-                                                  letterSpacing: 0.5,
+                                                  fontSize: 18, // SMALLER (was 20) for compact UI
+                                                  letterSpacing: 0.3,
                                                 ),
                                               ),
                                               const SizedBox(width: 12),
@@ -355,7 +355,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                               ),
                                             ],
                                           ),
-                                          const SizedBox(height: 24), // Balanced spacing before note button (Photo 2)
+                                          const SizedBox(height: 18), // COMPACT (was 24)
                                           Center(
                                             child: _NotePill(
                                               hasNote: _noteCtrl.text.trim().isNotEmpty,
@@ -363,7 +363,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                               onTap: _openNoteSheet,
                                             ),
                                           ),
-                                          const SizedBox(height: 16), // Bottom breathing room
+                                          const SizedBox(height: 12), // COMPACT (was 16)
                                         ],
                                       ),
                                     ),
@@ -859,8 +859,8 @@ class _QtyStepper extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(10.0), // Increased from 8 to 10 for ≥44px tap target
-          child: Icon(icon, size: 22, color: onSurface),
+          padding: const EdgeInsets.all(8.0), // COMPACT (was 10) - still ≥44px total
+          child: Icon(icon, size: 20, color: onSurface), // COMPACT (was 22)
         ),
       ),
     );
@@ -885,13 +885,13 @@ class _AddIconButton extends StatelessWidget {
       child: OutlinedButton(
         style: OutlinedButton.styleFrom(
           shape: const CircleBorder(),
-          side: BorderSide(color: onSurface, width: 1.5), // Slightly thicker border for visibility
-          minimumSize: const Size(50, 50), // Increased from 48 to 50 for better touch target
+          side: BorderSide(color: onSurface, width: 1.5),
+          minimumSize: const Size(46, 46), // COMPACT (was 50) - still good tap target
           padding: EdgeInsets.zero,
           foregroundColor: onSurface,
         ),
         onPressed: enabled ? onTap : null,
-        child: const Icon(Icons.shopping_bag_outlined, size: 24), // Increased icon from 22 to 24
+        child: const Icon(Icons.shopping_bag_outlined, size: 22), // COMPACT (was 24)
       ),
     );
   }
