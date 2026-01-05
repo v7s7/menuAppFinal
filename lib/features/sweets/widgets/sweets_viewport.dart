@@ -1,5 +1,6 @@
 // lib/features/sweets/widgets/sweets_viewport.dart
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter; // For glass blur effect
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -266,41 +267,64 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  // PRODUCT SAFE BOX: Top padding to prevent overlap with product image
-                                  const SizedBox(height: 12),
+                                  // PRODUCT SAFE BOX: Generous top padding to prevent overlap
+                                  const SizedBox(height: 20),
 
-                                  // Dots + Category bar section
+                                  // iOS Glass Container for Dots + Category bar
                                   Center(
                                     child: ConstrainedBox(
                                       constraints: const BoxConstraints(maxWidth: 560),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          // Pagination dots (if multiple products)
-                                          if (filtered.length > 1)
-                                            Padding(
-                                              padding: const EdgeInsets.only(bottom: 8.0),
-                                              child: _DotsIndicator(
-                                                count: filtered.length,
-                                                active: safeIndex,
-                                                color: onSurface,
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(20),
+                                        child: BackdropFilter(
+                                          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: surface.withOpacity(0.7), // iOS-style translucent
+                                              borderRadius: BorderRadius.circular(20),
+                                              border: Border.all(
+                                                color: onSurface.withOpacity(0.1),
+                                                width: 0.5,
                                               ),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black.withOpacity(0.05),
+                                                  blurRadius: 10,
+                                                  offset: const Offset(0, 2),
+                                                ),
+                                              ],
                                             ),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 12,
+                                            ),
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                // Pagination dots (if multiple products)
+                                                if (filtered.length > 1)
+                                                  Padding(
+                                                    padding: const EdgeInsets.only(bottom: 10.0),
+                                                    child: _DotsIndicator(
+                                                      count: filtered.length,
+                                                      active: safeIndex,
+                                                      color: onSurface,
+                                                    ),
+                                                  ),
 
-                                          // CRITICAL: Spacing between dots and category bar to protect image
-                                          if (filtered.length > 1)
-                                            const SizedBox(height: 8),
-
-                                          const CategoryBar(),
-                                        ],
+                                                const CategoryBar(),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ),
 
-                                  // Compact spacing for more product breathing room
-                                  const SizedBox(height: 20),
+                                  // Tighter spacing to bottom info group
+                                  const SizedBox(height: 14),
 
-                                  // Name + price/qty/add section - COMPACT
+                                  // Name + price/qty/add section - TIGHT GROUP
                                   Center(
                                     child: ConstrainedBox(
                                       constraints: const BoxConstraints(maxWidth: 520),
@@ -322,15 +346,15 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                                   .titleMedium
                                                   ?.copyWith(
                                                     fontWeight: FontWeight.w700,
-                                                    fontSize: 16, // SMALLER (was 18) for compact UI
+                                                    fontSize: 16,
                                                     color: onSurface,
                                                     letterSpacing: 0.2,
-                                                    height: 1.1, // Tighter (was 1.2)
+                                                    height: 1.1,
                                                   ),
                                               textAlign: TextAlign.center,
                                             ),
                                           ),
-                                          const SizedBox(height: 10), // ULTRA-COMPACT (was 12)
+                                          const SizedBox(height: 8), // TIGHTER (was 10)
                                           Row(
                                             mainAxisAlignment: MainAxisAlignment.center,
                                             children: [
@@ -339,11 +363,11 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                                 style: TextStyle(
                                                   color: onSurface,
                                                   fontWeight: FontWeight.w800,
-                                                  fontSize: 16, // ULTRA-COMPACT (was 18)
+                                                  fontSize: 16,
                                                   letterSpacing: 0.2,
                                                 ),
                                               ),
-                                              const SizedBox(width: 10), // Tighter (was 12)
+                                              const SizedBox(width: 10),
                                               _QtyStepper(
                                                 onSurface: onSurface,
                                                 qty: _qty,
@@ -352,7 +376,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                                 onInc: () => setState(() =>
                                                     _qty = (_qty < 99) ? _qty + 1 : 99),
                                               ),
-                                              const SizedBox(width: 6), // Tighter (was 8)
+                                              const SizedBox(width: 6),
                                               _AddIconButton(
                                                 onSurface: onSurface,
                                                 enabled: !isFlying,
@@ -364,7 +388,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                               ),
                                             ],
                                           ),
-                                          const SizedBox(height: 16), // ULTRA-COMPACT (was 18)
+                                          const SizedBox(height: 12), // TIGHTER (was 16)
                                           Center(
                                             child: _NotePill(
                                               hasNote: _noteCtrl.text.trim().isNotEmpty,
@@ -372,7 +396,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                               onTap: _openNoteSheet,
                                             ),
                                           ),
-                                          const SizedBox(height: 12), // COMPACT (was 16)
+                                          const SizedBox(height: 10), // TIGHTER (was 12)
                                         ],
                                       ),
                                     ),
