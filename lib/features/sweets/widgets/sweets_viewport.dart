@@ -589,59 +589,66 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
+      useSafeArea: true,
       builder: (ctx) {
         final onSurface = Theme.of(ctx).colorScheme.onSurface;
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-            top: 8,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Order note', style: Theme.of(ctx).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: onSurface.withOpacity(0.04),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: onSurface.withOpacity(0.12)),
-                ),
-                child: TextField(
-                  controller: tmp,
-                  autofocus: true,
-                  maxLines: 5,
-                  minLines: 3,
-                  maxLength: 200,
-                  decoration: const InputDecoration(
-                    hintText:
-                        'Write special instructions (e.g., less sugar, extra sauce)…',
-                    border: InputBorder.none,
-                    counterText: '',
-                    contentPadding: EdgeInsets.all(12),
+        final keyboardHeight = MediaQuery.of(ctx).viewInsets.bottom;
+
+        return SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              8,
+              16,
+              16 + keyboardHeight,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Order note', style: Theme.of(ctx).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: onSurface.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: onSurface.withOpacity(0.12)),
+                  ),
+                  child: TextField(
+                    controller: tmp,
+                    autofocus: true,
+                    textInputAction: TextInputAction.newline,
+                    maxLines: 5,
+                    minLines: 3,
+                    maxLength: 200,
+                    decoration: const InputDecoration(
+                      hintText:
+                          'Write special instructions (e.g., less sugar, extra sauce)…',
+                      border: InputBorder.none,
+                      counterText: '',
+                      contentPadding: EdgeInsets.all(12),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () => Navigator.pop(ctx, ''),
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    label: const Text('Clear'),
-                  ),
-                  const Spacer(),
-                  FilledButton.icon(
-                    onPressed: () => Navigator.pop(ctx, tmp.text.trim()),
-                    icon: const Icon(Icons.check, size: 18),
-                    label: const Text('Save'),
-                  ),
-                ],
-              ),
-            ],
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () => Navigator.pop(ctx, ''),
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      label: const Text('Clear'),
+                    ),
+                    const Spacer(),
+                    FilledButton.icon(
+                      onPressed: () => Navigator.pop(ctx, tmp.text.trim()),
+                      icon: const Icon(Icons.check, size: 18),
+                      label: const Text('Save'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         );
       },
