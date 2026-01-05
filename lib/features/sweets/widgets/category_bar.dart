@@ -1,5 +1,4 @@
 // lib/features/sweets/widgets/category_bar.dart
-import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -139,97 +138,73 @@ class _GlassCategoryBarState extends ConsumerState<GlassCategoryBar> {
           );
         }
 
-        // Glass container with blur + subtle gradient + hairline
-        final glass = ClipRRect(
-          borderRadius: BorderRadius.circular(18),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: scheme.surface.withOpacity(0.40),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: onSurface.withOpacity(0.08)),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    scheme.surface.withOpacity(0.42),
-                    scheme.surface.withOpacity(0.32),
-                  ],
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Top row (All + visible tops only)
-                  row(
-                    controller: _topCtrl,
-                    children: [
-                      pill(
-                        id: null,
-                        label: 'All',
-                        selected: selTop == null,
-                        onTap: () {
-                          ref.read(selectedCategoryIdProvider.notifier).state = null;
-                          ref.read(selectedSubcategoryIdProvider.notifier).state = null;
-                        },
-                      ),
-                      ...tops.map(
-                        (c) => pill(
-                          id: c.id,
-                          label: c.name,
-                          selected: selTop == c.id,
-                          onTap: () {
-                            ref.read(selectedCategoryIdProvider.notifier).state = c.id;
-                            ref.read(selectedSubcategoryIdProvider.notifier).state = null;
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  // Hairline only if we have visible subs
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 160),
-                    child: (selTop != null && subs.isNotEmpty)
-                        ? Container(height: 1, color: onSurface.withOpacity(0.06))
-                        : const SizedBox.shrink(),
-                  ),
-
-                  // Sub row (visible subs only)
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeOutCubic,
-                    child: (selTop != null && subs.isNotEmpty)
-                        ? row(
-                            controller: _subCtrl,
-                            children: subs
-                                .map(
-                                  (s) => pill(
-                                    id: s.id,
-                                    label: s.name,
-                                    selected: ref.watch(selectedSubcategoryIdProvider) == s.id,
-                                    onTap: () => ref
-                                        .read(selectedSubcategoryIdProvider.notifier)
-                                        .state = s.id,
-                                  ),
-                                )
-                                .toList(),
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-
-        // Constrain width so it feels like a floating control
+        // CLEAN MODERN DESIGN: Just chips, no background container (matches Photo 2)
         return ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: glass,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Top row (All + visible tops only)
+                row(
+                  controller: _topCtrl,
+                  children: [
+                    pill(
+                      id: null,
+                      label: 'All',
+                      selected: selTop == null,
+                      onTap: () {
+                        ref.read(selectedCategoryIdProvider.notifier).state = null;
+                        ref.read(selectedSubcategoryIdProvider.notifier).state = null;
+                      },
+                    ),
+                    ...tops.map(
+                      (c) => pill(
+                        id: c.id,
+                        label: c.name,
+                        selected: selTop == c.id,
+                        onTap: () {
+                          ref.read(selectedCategoryIdProvider.notifier).state = c.id;
+                          ref.read(selectedSubcategoryIdProvider.notifier).state = null;
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Hairline only if we have visible subs
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 160),
+                  child: (selTop != null && subs.isNotEmpty)
+                      ? Container(height: 1, color: onSurface.withOpacity(0.06))
+                      : const SizedBox.shrink(),
+                ),
+
+                // Sub row (visible subs only)
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  child: (selTop != null && subs.isNotEmpty)
+                      ? row(
+                          controller: _subCtrl,
+                          children: subs
+                              .map(
+                                (s) => pill(
+                                  id: s.id,
+                                  label: s.name,
+                                  selected: ref.watch(selectedSubcategoryIdProvider) == s.id,
+                                  onTap: () => ref
+                                      .read(selectedSubcategoryIdProvider.notifier)
+                                      .state = s.id,
+                                ),
+                              )
+                              .toList(),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
           ),
         );
       },
