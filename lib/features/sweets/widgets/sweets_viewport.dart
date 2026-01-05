@@ -251,7 +251,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                           ),
                         ),
 
-                      // 4) Dots + Category bar + Controls - FIXED: Use Column with explicit spacing instead of fractional Alignment
+                      // 4) Bottom UI Section - PROTECTED from overlapping product image
                       Positioned(
                         left: 0,
                         right: 0,
@@ -266,13 +266,17 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  // Category bar section
+                                  // PRODUCT SAFE BOX: Top padding to prevent overlap with product image
+                                  const SizedBox(height: 12),
+
+                                  // Dots + Category bar section
                                   Center(
                                     child: ConstrainedBox(
                                       constraints: const BoxConstraints(maxWidth: 560),
                                       child: Column(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
+                                          // Pagination dots (if multiple products)
                                           if (filtered.length > 1)
                                             Padding(
                                               padding: const EdgeInsets.only(bottom: 8.0),
@@ -282,6 +286,11 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                                 color: onSurface,
                                               ),
                                             ),
+
+                                          // CRITICAL: Spacing between dots and category bar to protect image
+                                          if (filtered.length > 1)
+                                            const SizedBox(height: 8),
+
                                           const CategoryBar(),
                                         ],
                                       ),
@@ -321,7 +330,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                               textAlign: TextAlign.center,
                                             ),
                                           ),
-                                          const SizedBox(height: 12), // Tighter (was 14)
+                                          const SizedBox(height: 10), // ULTRA-COMPACT (was 12)
                                           Row(
                                             mainAxisAlignment: MainAxisAlignment.center,
                                             children: [
@@ -330,11 +339,11 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                                 style: TextStyle(
                                                   color: onSurface,
                                                   fontWeight: FontWeight.w800,
-                                                  fontSize: 18, // SMALLER (was 20) for compact UI
-                                                  letterSpacing: 0.3,
+                                                  fontSize: 16, // ULTRA-COMPACT (was 18)
+                                                  letterSpacing: 0.2,
                                                 ),
                                               ),
-                                              const SizedBox(width: 12),
+                                              const SizedBox(width: 10), // Tighter (was 12)
                                               _QtyStepper(
                                                 onSurface: onSurface,
                                                 qty: _qty,
@@ -343,7 +352,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                                 onInc: () => setState(() =>
                                                     _qty = (_qty < 99) ? _qty + 1 : 99),
                                               ),
-                                              const SizedBox(width: 8),
+                                              const SizedBox(width: 6), // Tighter (was 8)
                                               _AddIconButton(
                                                 onSurface: onSurface,
                                                 enabled: !isFlying,
@@ -355,7 +364,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                               ),
                                             ],
                                           ),
-                                          const SizedBox(height: 18), // COMPACT (was 24)
+                                          const SizedBox(height: 16), // ULTRA-COMPACT (was 18)
                                           Center(
                                             child: _NotePill(
                                               hasNote: _noteCtrl.text.trim().isNotEmpty,
@@ -830,12 +839,12 @@ class _QtyStepper extends StatelessWidget {
           children: [
             _step(icon: Icons.remove_rounded, onTap: onDec, onSurface: onSurface, semantics: 'Decrease quantity'),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6), // ULTRA-COMPACT (was 10h, 8v)
               child: Text(
                 qty.toString().padLeft(2, '0'),
                 style: TextStyle(
                     fontWeight: FontWeight.w700,
-                    fontSize: 16,
+                    fontSize: 14, // ULTRA-COMPACT (was 16)
                     color: onSurface),
               ),
             ),
@@ -859,8 +868,8 @@ class _QtyStepper extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(8.0), // COMPACT (was 10) - still ≥44px total
-          child: Icon(icon, size: 20, color: onSurface), // COMPACT (was 22)
+          padding: const EdgeInsets.all(7.0), // ULTRA-COMPACT (was 8) - still ≥44px total
+          child: Icon(icon, size: 18, color: onSurface), // ULTRA-COMPACT (was 20)
         ),
       ),
     );
@@ -886,12 +895,12 @@ class _AddIconButton extends StatelessWidget {
         style: OutlinedButton.styleFrom(
           shape: const CircleBorder(),
           side: BorderSide(color: onSurface, width: 1.5),
-          minimumSize: const Size(46, 46), // COMPACT (was 50) - still good tap target
+          minimumSize: const Size(44, 44), // ULTRA-COMPACT (was 46) - minimum tap target
           padding: EdgeInsets.zero,
           foregroundColor: onSurface,
         ),
         onPressed: enabled ? onTap : null,
-        child: const Icon(Icons.shopping_bag_outlined, size: 22), // COMPACT (was 24)
+        child: const Icon(Icons.shopping_bag_outlined, size: 20), // ULTRA-COMPACT (was 22)
       ),
     );
   }
