@@ -184,8 +184,10 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
 
         // ==================== LAYOUT TWEAK CONSTANTS ====================
         // Adjust these values to fine-tune spacing and sizing
+        const double logoToProductGap = 18;       // SAFE GAP: Space between logo and product stage
         const double productMaxHeight = 380;      // Maximum height for product image
-        const double productBottomGap = 16;       // Gap between product and dots/category
+        const double productInnerPadding = 16;    // SAFE GAP: Padding inside product stage (vertical)
+        const double productToDotsGap = 20;       // SAFE GAP: Space between product stage and dots
         const double dotsBottomGap = 12;          // Gap between dots and category bar
         const double categoryBottomGap = 16;      // Gap between category bar and product name
         const double nameBottomGap = 10;          // Gap between product name and price/qty row
@@ -203,32 +205,74 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      // 1) Product Carousel with MAX HEIGHT constraint
-                      Container(
-                        constraints: const BoxConstraints(
-                          maxHeight: productMaxHeight,
-                        ),
-                        child: _Carousel(
-                          controller: _pc,
-                          sweets: filtered,
-                          isDetailOpen: state.isDetailOpen,
-                          hostImageKey: _activeImageKey,
-                          onImageTap: () => ref
-                              .read(sweetsControllerProvider.notifier)
-                              .toggleDetail(),
-                          onIndexChanged: (i) {
-                            ref
-                                .read(sweetsControllerProvider.notifier)
-                                .setIndex((i % filtered.length).toInt());
-                            setState(() {
-                              _qty = 1;
-                              _noteCtrl.clear(); // reset note per product
-                            });
-                          },
-                        ),
+                      // ============ MAIN CONTENT - NORMAL VERTICAL FLOW ============
+                      Column(
+                        children: [
+                          // SECTION 1: LOGO (if present)
+                          if (logoUrl case final url?)
+                            IgnorePointer(
+                              ignoring: true,
+                              child: Padding(
+                                padding: EdgeInsets.only(
+                                  top: MediaQuery.of(context).padding.top + 16,
+                                ),
+                                child: AnimatedOpacity(
+                                  duration: const Duration(milliseconds: 180),
+                                  opacity: state.isDetailOpen ? 0 : 1,
+                                  child: _LogoCard(
+                                    url: url,
+                                    box: 90,
+                                    icon: 74,
+                                    borderOpacity: 0.18,
+                                    fillOpacity: 0.15,
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                          // SAFE GAP: Logo to Product
+                          if (logoUrl != null) SizedBox(height: logoToProductGap),
+
+                          // SECTION 2: PRODUCT STAGE (CENTERED, PROTECTED)
+                          Expanded(
+                            child: Center(
+                              child: Container(
+                                constraints: BoxConstraints(
+                                  maxHeight: productMaxHeight,
+                                  maxWidth: size.width * 0.9,
+                                ),
+                                padding: EdgeInsets.symmetric(
+                                  vertical: productInnerPadding,
+                                ),
+                                child: Center(
+                                  child: _Carousel(
+                                    controller: _pc,
+                                    sweets: filtered,
+                                    isDetailOpen: state.isDetailOpen,
+                                    hostImageKey: _activeImageKey,
+                                    onImageTap: () => ref
+                                        .read(sweetsControllerProvider.notifier)
+                                        .toggleDetail(),
+                                    onIndexChanged: (i) {
+                                      ref
+                                          .read(sweetsControllerProvider.notifier)
+                                          .setIndex((i % filtered.length).toInt());
+                                      setState(() {
+                                        _qty = 1;
+                                        _noteCtrl.clear();
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
 
-                      // 2) Mask right half when detail is open
+                      // ============ POSITIONED OVERLAYS ============
+
+                      // Mask right half when detail is open
                       if (state.isDetailOpen)
                         Positioned(
                           top: 0,
@@ -242,32 +286,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                           ),
                         ),
 
-                      // 3) Centered brand logo - POSITIONED HIGH (close to header)
-                      if (logoUrl case final url?)
-                        Align(
-                          alignment: Alignment.topCenter,
-                          child: IgnorePointer(
-                            ignoring: true,
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                top: MediaQuery.of(context).padding.top + 16, // CLOSE to header (was 60)
-                              ),
-                              child: AnimatedOpacity(
-                                duration: const Duration(milliseconds: 180),
-                                opacity: state.isDetailOpen ? 0 : 1,
-                                child: _LogoCard(
-                                  url: url,
-                                  box: 90, // Slightly smaller (was 100)
-                                  icon: 74, // Adjusted proportionally
-                                  borderOpacity: 0.18,
-                                  fillOpacity: 0.15,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-
-                      // 4) Nutrition panel (right)
+                      // Nutrition panel (right)
                       Align(
                         alignment: Alignment.centerRight,
                         child: Padding(
@@ -282,17 +301,15 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                         ),
                       ),
 
-                      // 7) Center nutrition note (big, single)
+                      // Center nutrition note (big, single)
                       if (nutritionNote != null && nutritionNote.isNotEmpty)
                         Align(
-                          alignment:
-                              const Alignment(0, 0.9), // between item & bottom
+                          alignment: const Alignment(0, 0.9),
                           child: AnimatedOpacity(
                             duration: const Duration(milliseconds: 160),
                             opacity: state.isDetailOpen ? 1 : 0,
                             child: ConstrainedBox(
-                              constraints:
-                                  const BoxConstraints(maxWidth: 420),
+                              constraints: const BoxConstraints(maxWidth: 420),
                               child: Text(
                                 nutritionNote,
                                 textAlign: TextAlign.center,
@@ -304,8 +321,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                                         ?.copyWith(
                                           fontSize: 18,
                                           fontWeight: FontWeight.w700,
-                                          color:
-                                              onSurface.withOpacity(0.9),
+                                          color: onSurface.withOpacity(0.9),
                                           fontFamily: secondaryFamily,
                                           height: 1.25,
                                         ) ??
@@ -326,8 +342,8 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
 
                 // ==================== BOTTOM UI - NORMAL FLOW (NO OVERLAY) ====================
 
-                // GUARANTEED GAP - Product Safe Box Boundary
-                SizedBox(height: productBottomGap),
+                // GUARANTEED SAFE GAP - Product to Dots
+                SizedBox(height: productToDotsGap),
 
                 // SECTION 2: PAGINATION DOTS
                 if (filtered.length > 1) ...[
