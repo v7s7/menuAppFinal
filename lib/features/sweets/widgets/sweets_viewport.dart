@@ -184,10 +184,10 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
 
         // ==================== LAYOUT TWEAK CONSTANTS ====================
         // Adjust these values to fine-tune spacing and sizing
-        const double logoToProductGap = 18;       // SAFE GAP: Space between logo and product stage
-        const double productMaxHeight = 450;      // Maximum height for product image
-        const double productInnerPadding = 16;    // SAFE GAP: Padding inside product stage (vertical)
-        const double productToDotsGap = 20;       // SAFE GAP: Space between product stage and dots
+        const double logoToProductGap = 24;       // SAFE GAP: Space between logo and product stage (INCREASED)
+        const double productMaxHeight = 450;      // Maximum height for product image (user adjusted)
+        const double productInnerPadding = 20;    // SAFE GAP: Padding inside product stage (INCREASED)
+        const double productToDotsGap = 24;       // SAFE GAP: Space between product stage and dots (INCREASED)
         const double dotsBottomGap = 12;          // Gap between dots and category bar
         const double categoryBottomGap = 16;      // Gap between category bar and product name
         const double nameBottomGap = 10;          // Gap between product name and price/qty row
@@ -363,7 +363,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                   SizedBox(height: dotsBottomGap),
                 ],
 
-                // SECTION 3: iOS GLASS CATEGORY BAR
+                // SECTION 3: iOS GLASS CATEGORY BAR (SUBTLE/THIN)
                 IgnorePointer(
                   ignoring: state.isDetailOpen,
                   child: AnimatedOpacity(
@@ -373,28 +373,28 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(maxWidth: 560),
                         child: ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: BorderRadius.circular(12), // Reduced from 20
                           child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12), // Reduced from 20
                             child: Container(
                               decoration: BoxDecoration(
-                                color: surface.withOpacity(0.7),
-                                borderRadius: BorderRadius.circular(20),
+                                color: surface.withOpacity(0.5), // Reduced from 0.7
+                                borderRadius: BorderRadius.circular(12), // Reduced from 20
                                 border: Border.all(
-                                  color: onSurface.withOpacity(0.1),
-                                  width: 0.5,
+                                  color: onSurface.withOpacity(0.08), // Reduced from 0.1
+                                  width: 0.3, // Reduced from 0.5
                                 ),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: Colors.black.withOpacity(0.05),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 2),
+                                    color: Colors.black.withOpacity(0.02), // Reduced from 0.05
+                                    blurRadius: 6, // Reduced from 10
+                                    offset: const Offset(0, 1), // Reduced from (0, 2)
                                   ),
                                 ],
                               ),
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 12,
+                                horizontal: 8, // Reduced from 12
+                                vertical: 6,   // Reduced from 12
                               ),
                               child: const CategoryBar(),
                             ),
