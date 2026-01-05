@@ -15,3 +15,10 @@ build/
 .dart_tool/
 .pub/
 node_modules/
+# Flutter/web build outputs (do not commit)
+build/
+.tmp_customer/
+.tmp_merchant/
+
+# Firebase local stuff (optional)
+.firebase/
