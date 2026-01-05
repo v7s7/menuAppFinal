@@ -234,11 +234,12 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
                           if (logoUrl != null) SizedBox(height: logoToProductGap),
 
                           // SECTION 2: PRODUCT STAGE (CENTERED, PROTECTED)
-                          Expanded(
+                          // Option: Use SizedBox for FIXED height instead of Expanded
+                          SizedBox(
+                            height: productMaxHeight,  // FIXED height
                             child: Center(
                               child: Container(
                                 constraints: BoxConstraints(
-                                  maxHeight: productMaxHeight,
                                   maxWidth: size.width * 0.9,
                                 ),
                                 padding: EdgeInsets.symmetric(
