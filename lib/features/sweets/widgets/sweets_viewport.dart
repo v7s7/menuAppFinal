@@ -185,7 +185,7 @@ class _SweetsViewportState extends ConsumerState<SweetsViewport>
         // ==================== LAYOUT TWEAK CONSTANTS ====================
         // Adjust these values to fine-tune spacing and sizing
         const double logoToProductGap = 18;       // SAFE GAP: Space between logo and product stage
-        const double productMaxHeight = 380;      // Maximum height for product image
+        const double productMaxHeight = 450;      // Maximum height for product image
         const double productInnerPadding = 16;    // SAFE GAP: Padding inside product stage (vertical)
         const double productToDotsGap = 20;       // SAFE GAP: Space between product stage and dots
         const double dotsBottomGap = 12;          // Gap between dots and category bar
