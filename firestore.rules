@@ -97,7 +97,7 @@ service cloud.firestore {
             (resource.data.userId == request.auth.uid ||
              isStaff(merchantId, branchId));
 
-          // UPDATE: Staff (including admin) can ONLY update order status workflow fields
+          // UPDATE: Staff (including admin) can update order status workflow fields + email notifications
           // STRICT VALIDATION: Only allowed fields can be modified
           allow update: if isStaff(merchantId, branchId) &&
             // Immutable fields: Cannot change core order data
@@ -137,7 +137,12 @@ service cloud.firestore {
              request.resource.data.updatedByRole in ['admin', 'staff']) &&
             // Cancellation reason: Only when status is cancelled
             (!request.resource.data.keys().hasAny(['cancellationReason']) ||
-             request.resource.data.status == 'cancelled');
+             request.resource.data.status == 'cancelled') &&
+            // Email notifications: Allow staff to update notification tracking fields
+            // These fields are used by the email notification service for idempotency
+            // and do not affect order data or workflow
+            (!request.resource.data.keys().hasAny(['notifications']) ||
+             request.resource.data.notifications is map);
 
           // No deletes (preserve order history)
           allow delete: if false;
