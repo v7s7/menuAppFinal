@@ -116,6 +116,11 @@ class OrderService {
         if (customerCarPlate != null) 'customerCarPlate': customerCarPlate,
         if (loyaltyDiscount != null) 'loyaltyDiscount': loyaltyDiscount,
         if (loyaltyPointsUsed != null) 'loyaltyPointsUsed': loyaltyPointsUsed,
+        // WhatsApp notification tracking flags
+        'notifications': {
+          'waNewSent': false,
+          'waCancelSent': false,
+        },
       });
 
     return om.Order(

@@ -1,92 +1,44 @@
 /**
- * Cloudflare Worker for SweetWeb Email Service
- * Handles order notifications, cancellations, customer confirmations, and report emails via Resend API
+ * Cloudflare Worker for SweetWeb WhatsApp Order Notifications
+ *
+ * Features:
+ * - Cron-triggered WhatsApp notifications (runs every 1 minute)
+ * - Firestore REST API integration (no Cloud Functions needed)
+ * - Idempotent message delivery with persistent tracking
+ * - OAuth token caching to reduce auth overhead
  *
  * Deployment:
- * 1) https://dash.cloudflare.com
- * 2) Workers & Pages > Create application > Create Worker
- * 3) Paste this file content
- * 4) Add Secret: RESEND_API_KEY = <your-resend-api-key>
- * 5) Deploy
+ * 1. Deploy to Cloudflare Workers
+ * 2. Add Cron Trigger: "* * * * *" (every minute)
+ * 3. Add required secrets (see below)
+ *
+ * Required Secrets:
+ * - FIREBASE_PROJECT_ID: Your Firebase project ID
+ * - FIREBASE_CLIENT_EMAIL: Service account email
+ * - FIREBASE_PRIVATE_KEY: Service account private key (full PEM format)
+ * - TWILIO_ACCOUNT_SID: Twilio Account SID
+ * - TWILIO_AUTH_TOKEN: Twilio Auth Token
+ * - TWILIO_WHATSAPP_FROM: Twilio WhatsApp number (e.g., whatsapp:+14155238886)
  */
 
-const FROM_EMAIL = 'SweetWeb <onboarding@resend.dev>';
+// Global OAuth token cache (persists across requests in same isolate)
+let cachedToken = null;
+let tokenExpiry = null;
 
-// CORS headers for Flutter web app
+// CORS headers for Flutter web app (keep for backward compatibility with email endpoints)
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-function jsonResponse(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
-}
-
-function requireEnv(apiKey) {
-  if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length < 10) {
-    return jsonResponse({ success: false, error: 'Missing RESEND_API_KEY' }, 500);
-  }
-  return null;
-}
-
-function toNumber(v, fallback = 0) {
-  const n = typeof v === 'number' ? v : Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function toArray(v) {
-  return Array.isArray(v) ? v : [];
-}
-
-function safeText(v, fallback = '') {
-  if (v === null || v === undefined) return fallback;
-  const s = String(v);
-  return s.trim().length ? s : fallback;
-}
-
-async function sendViaResend({ apiKey, to, subject, html }) {
-  const envErr = requireEnv(apiKey);
-  if (envErr) return envErr;
-
-  const toEmail = safeText(to);
-  if (!toEmail) return jsonResponse({ success: false, error: 'Missing toEmail' }, 400);
-
-  const subj = safeText(subject, 'SweetWeb Notification');
-  const bodyHtml = safeText(html, '<p>Notification</p>');
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: FROM_EMAIL,
-      to: toEmail,
-      subject: subj,
-      html: bodyHtml,
-    }),
-  });
-
-  const result = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    return jsonResponse(
-      { success: false, error: result?.message || 'Failed to send email', details: result },
-      500
-    );
-  }
-
-  return jsonResponse({ success: true, messageId: result.id });
-}
+// ============================================================================
+// MAIN WORKER EXPORTS
+// ============================================================================
 
 export default {
+  // HTTP fetch handler (existing email endpoints)
   async fetch(request, env) {
-    // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });
     }
@@ -103,23 +55,14 @@ export default {
       if (!action || typeof action !== 'string') {
         return jsonResponse({ success: false, error: 'Missing action' }, 400);
       }
-      if (!data || typeof data !== 'object') {
-        return jsonResponse({ success: false, error: 'Missing data' }, 400);
-      }
 
-      const apiKey = env?.RESEND_API_KEY;
-
-      if (action === 'order-notification') {
-        return await sendOrderNotification(data, apiKey);
-      }
-      if (action === 'order-cancellation') {
-        return await sendOrderCancellation(data, apiKey);
-      }
-      if (action === 'customer-confirmation') {
-        return await sendCustomerConfirmation(data, apiKey);
-      }
-      if (action === 'report') {
-        return await sendReport(data, apiKey);
+      // Legacy email endpoints (kept for backward compatibility)
+      if (action === 'order-notification' || action === 'order-cancellation' ||
+          action === 'customer-confirmation' || action === 'report') {
+        return jsonResponse({
+          success: false,
+          error: 'Email notifications are deprecated. WhatsApp-only mode active.'
+        }, 400);
       }
 
       return jsonResponse({ success: false, error: 'Invalid action' }, 400);
@@ -127,599 +70,632 @@ export default {
       return jsonResponse({ success: false, error: error?.message || 'Unknown error' }, 500);
     }
   },
+
+  // Cron trigger handler - runs every minute
+  async scheduled(event, env, ctx) {
+    console.log('[CRON] Starting WhatsApp notification check');
+
+    try {
+      // Get OAuth token (cached if still valid)
+      const token = await getFirebaseOAuthToken(env);
+
+      // Process pending orders (status=pending, waNewSent=false)
+      await processPendingOrders(env, token);
+
+      // Process cancelled orders (status=cancelled, waCancelSent=false)
+      await processCancelledOrders(env, token);
+
+      console.log('[CRON] Completed successfully');
+    } catch (error) {
+      console.error('[CRON] Error:', error.message);
+    }
+  },
 };
 
-async function sendOrderNotification(data, apiKey) {
-  const orderNo = safeText(data.orderNo, '—');
-  const table = safeText(data.table, '');
-  const items = toArray(data.items);
-  const subtotal = toNumber(data.subtotal, 0);
-  const timestamp = safeText(data.timestamp, '');
-  const merchantName = safeText(data.merchantName, 'SweetWeb');
-  const dashboardUrl = safeText(data.dashboardUrl, '#');
-  const toEmail = safeText(data.toEmail, '');
+// ============================================================================
+// FIREBASE OAUTH TOKEN GENERATION
+// ============================================================================
 
-  const html = orderNotificationTemplate({
-    orderNo,
-    table,
-    items,
-    subtotal,
-    timestamp,
-    merchantName,
-    dashboardUrl,
+/**
+ * Get Firebase OAuth token for Firestore REST API access
+ * Uses cached token if still valid, otherwise generates new one
+ */
+async function getFirebaseOAuthToken(env) {
+  // Return cached token if still valid (with 5 minute buffer)
+  if (cachedToken && tokenExpiry && Date.now() < tokenExpiry - 300000) {
+    console.log('[AUTH] Using cached OAuth token');
+    return cachedToken;
+  }
+
+  console.log('[AUTH] Generating new OAuth token');
+
+  const { FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY } = env;
+
+  if (!FIREBASE_CLIENT_EMAIL || !FIREBASE_PRIVATE_KEY) {
+    throw new Error('Missing Firebase credentials');
+  }
+
+  // Create JWT for OAuth token exchange
+  const jwt = await createFirebaseJWT(FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY);
+
+  // Exchange JWT for OAuth token
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: jwt,
+    }),
   });
 
-  const subject = `🔔 New Order ${orderNo}${table ? ` - Table ${table}` : ''}`;
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OAuth token exchange failed: ${error}`);
+  }
 
-  return await sendViaResend({ apiKey, to: toEmail, subject, html });
+  const data = await response.json();
+
+  // Cache token and expiry time
+  cachedToken = data.access_token;
+  tokenExpiry = Date.now() + (data.expires_in * 1000);
+
+  console.log('[AUTH] New OAuth token cached');
+  return cachedToken;
 }
 
-async function sendOrderCancellation(data, apiKey) {
-  const orderNo = safeText(data.orderNo, '—');
-  const table = safeText(data.table, '');
-  const items = toArray(data.items);
-  const subtotal = toNumber(data.subtotal, 0);
-  const timestamp = safeText(data.timestamp, '');
-  const merchantName = safeText(data.merchantName, 'SweetWeb');
-  const dashboardUrl = safeText(data.dashboardUrl, '#');
-  const toEmail = safeText(data.toEmail, '');
-  const cancellationReason = safeText(data.cancellationReason, '');
+/**
+ * Create signed JWT for Firebase service account authentication
+ * Uses WebCrypto API (RS256 algorithm)
+ */
+async function createFirebaseJWT(clientEmail, privateKeyPem) {
+  const now = Math.floor(Date.now() / 1000);
+  const expiry = now + 3600; // 1 hour
 
-  const html = orderCancellationTemplate({
-    orderNo,
-    table,
-    items,
-    subtotal,
-    timestamp,
-    merchantName,
-    dashboardUrl,
-    cancellationReason,
+  // JWT header
+  const header = {
+    alg: 'RS256',
+    typ: 'JWT',
+  };
+
+  // JWT payload
+  const payload = {
+    iss: clientEmail,
+    sub: clientEmail,
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: expiry,
+    scope: 'https://www.googleapis.com/auth/datastore',
+  };
+
+  // Encode header and payload
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const unsignedToken = `${encodedHeader}.${encodedPayload}`;
+
+  // Import private key for signing
+  const privateKey = await importPrivateKey(privateKeyPem);
+
+  // Sign the token
+  const signature = await crypto.subtle.sign(
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    privateKey,
+    new TextEncoder().encode(unsignedToken)
+  );
+
+  // Create final JWT
+  const encodedSignature = base64UrlEncode(signature);
+  return `${unsignedToken}.${encodedSignature}`;
+}
+
+/**
+ * Import RSA private key from PEM format for WebCrypto
+ */
+async function importPrivateKey(pemKey) {
+  // Remove PEM headers/footers and whitespace
+  const pemContents = pemKey
+    .replace(/-----BEGIN PRIVATE KEY-----/g, '')
+    .replace(/-----END PRIVATE KEY-----/g, '')
+    .replace(/\\n/g, '')
+    .replace(/\s+/g, '');
+
+  // Decode base64 to binary
+  const binaryKey = base64Decode(pemContents);
+
+  // Import key for signing
+  return await crypto.subtle.importKey(
+    'pkcs8',
+    binaryKey,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+}
+
+/**
+ * Base64 URL encode (for JWT)
+ */
+function base64UrlEncode(data) {
+  const bytes = typeof data === 'string'
+    ? new TextEncoder().encode(data)
+    : new Uint8Array(data);
+
+  let binary = '';
+  bytes.forEach(b => binary += String.fromCharCode(b));
+
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+/**
+ * Base64 decode (for PEM key)
+ */
+function base64Decode(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
+// ============================================================================
+// FIRESTORE REST API
+// ============================================================================
+
+/**
+ * Run Firestore collectionGroup query
+ */
+async function firestoreRunQuery(projectId, token, query) {
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(query),
   });
 
-  const subject = `❌ Order Cancelled ${orderNo}${table ? ` - Table ${table}` : ''}`;
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Firestore query failed: ${error}`);
+  }
 
-  return await sendViaResend({ apiKey, to: toEmail, subject, html });
+  const results = await response.json();
+
+  // Filter out empty results and extract documents
+  return results
+    .filter(r => r.document)
+    .map(r => ({
+      name: r.document.name,
+      fields: r.document.fields,
+      updateTime: r.document.updateTime,
+    }));
 }
 
-async function sendCustomerConfirmation(data, apiKey) {
-  const orderNo = safeText(data.orderNo, '—');
-  const table = safeText(data.table, '');
-  const items = toArray(data.items);
-  const subtotal = toNumber(data.subtotal, 0);
-  const timestamp = safeText(data.timestamp, '');
-  const merchantName = safeText(data.merchantName, 'SweetWeb');
-  const estimatedTime = safeText(data.estimatedTime, '');
-  const toEmail = safeText(data.toEmail, '');
+/**
+ * Commit Firestore updates with preconditions (idempotent)
+ */
+async function firestoreCommit(projectId, token, writes) {
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`;
 
-  const html = customerConfirmationTemplate({
-    orderNo,
-    table,
-    items,
-    subtotal,
-    timestamp,
-    merchantName,
-    estimatedTime,
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ writes }),
   });
 
-  const subject = `✅ Order Confirmed ${orderNo} - ${merchantName}`;
+  if (!response.ok) {
+    const error = await response.text();
+    // Precondition failures are expected (already updated) - don't throw
+    if (error.includes('FAILED_PRECONDITION')) {
+      console.log('[FIRESTORE] Precondition failed (already updated)');
+      return null;
+    }
+    throw new Error(`Firestore commit failed: ${error}`);
+  }
 
-  return await sendViaResend({ apiKey, to: toEmail, subject, html });
+  return await response.json();
 }
 
-async function sendReport(data, apiKey) {
-  const merchantName = safeText(data.merchantName, 'SweetWeb');
-  const dateRange = safeText(data.dateRange, '');
-  const totalOrders = toNumber(data.totalOrders, 0);
-  const totalRevenue = toNumber(data.totalRevenue, 0);
-  const servedOrders = toNumber(data.servedOrders, 0);
-  const cancelledOrders = toNumber(data.cancelledOrders, 0);
-  const averageOrder = toNumber(data.averageOrder, 0);
-  const topItems = toArray(data.topItems);
-  const ordersByStatus = toArray(data.ordersByStatus);
-  const toEmail = safeText(data.toEmail, '');
+/**
+ * Convert Firestore value to JavaScript value
+ */
+function firestoreValue(field) {
+  if (!field) return null;
+  if (field.stringValue !== undefined) return field.stringValue;
+  if (field.integerValue !== undefined) return parseInt(field.integerValue);
+  if (field.doubleValue !== undefined) return field.doubleValue;
+  if (field.booleanValue !== undefined) return field.booleanValue;
+  if (field.timestampValue !== undefined) return new Date(field.timestampValue);
+  if (field.arrayValue) return field.arrayValue.values?.map(firestoreValue) || [];
+  if (field.mapValue) {
+    const obj = {};
+    for (const [key, val] of Object.entries(field.mapValue.fields || {})) {
+      obj[key] = firestoreValue(val);
+    }
+    return obj;
+  }
+  return null;
+}
 
-  const html = reportTemplate({
-    merchantName,
-    dateRange,
-    totalOrders,
-    totalRevenue,
-    servedOrders,
-    cancelledOrders,
-    averageOrder,
-    topItems,
-    ordersByStatus,
+// ============================================================================
+// ORDER PROCESSING
+// ============================================================================
+
+/**
+ * Process pending orders that need WhatsApp notifications
+ * Query: status=pending AND notifications.waNewSent=false
+ * Limit: 10 orders per cron run
+ */
+async function processPendingOrders(env, token) {
+  console.log('[PENDING] Checking for pending orders needing notifications');
+
+  const { FIREBASE_PROJECT_ID } = env;
+
+  // CollectionGroup query for all branches
+  const query = {
+    structuredQuery: {
+      from: [{ collectionId: 'orders', allDescendants: true }],
+      where: {
+        compositeFilter: {
+          op: 'AND',
+          filters: [
+            {
+              fieldFilter: {
+                field: { fieldPath: 'status' },
+                op: 'EQUAL',
+                value: { stringValue: 'pending' },
+              },
+            },
+            {
+              fieldFilter: {
+                field: { fieldPath: 'notifications.waNewSent' },
+                op: 'EQUAL',
+                value: { booleanValue: false },
+              },
+            },
+          ],
+        },
+      },
+      orderBy: [{ field: { fieldPath: 'createdAt' }, direction: 'ASCENDING' }],
+      limit: 10,
+    },
+  };
+
+  const docs = await firestoreRunQuery(FIREBASE_PROJECT_ID, token, query);
+
+  console.log(`[PENDING] Found ${docs.length} pending orders`);
+
+  for (const doc of docs) {
+    await processNewOrder(env, token, doc);
+  }
+}
+
+/**
+ * Process cancelled orders that need WhatsApp notifications
+ * Query: status=cancelled AND notifications.waCancelSent=false
+ * Limit: 10 orders per cron run
+ */
+async function processCancelledOrders(env, token) {
+  console.log('[CANCELLED] Checking for cancelled orders needing notifications');
+
+  const { FIREBASE_PROJECT_ID } = env;
+
+  // CollectionGroup query for all branches
+  const query = {
+    structuredQuery: {
+      from: [{ collectionId: 'orders', allDescendants: true }],
+      where: {
+        compositeFilter: {
+          op: 'AND',
+          filters: [
+            {
+              fieldFilter: {
+                field: { fieldPath: 'status' },
+                op: 'EQUAL',
+                value: { stringValue: 'cancelled' },
+              },
+            },
+            {
+              fieldFilter: {
+                field: { fieldPath: 'notifications.waCancelSent' },
+                op: 'EQUAL',
+                value: { booleanValue: false },
+              },
+            },
+          ],
+        },
+      },
+      orderBy: [
+        { field: { fieldPath: 'status' } },
+        { field: { fieldPath: 'cancelledAt' }, direction: 'ASCENDING' },
+      ],
+      limit: 10,
+    },
+  };
+
+  const docs = await firestoreRunQuery(FIREBASE_PROJECT_ID, token, query);
+
+  console.log(`[CANCELLED] Found ${docs.length} cancelled orders`);
+
+  for (const doc of docs) {
+    await processCancelledOrder(env, token, doc);
+  }
+}
+
+/**
+ * Process a single new order notification
+ */
+async function processNewOrder(env, token, doc) {
+  try {
+    const { FIREBASE_PROJECT_ID } = env;
+    const fields = doc.fields;
+
+    // Extract order data
+    const orderNo = firestoreValue(fields.orderNo) || 'N/A';
+    const merchantId = firestoreValue(fields.merchantId);
+    const branchId = firestoreValue(fields.branchId);
+    const table = firestoreValue(fields.table);
+    const subtotal = firestoreValue(fields.subtotal) || 0;
+    const items = firestoreValue(fields.items) || [];
+
+    console.log(`[NEW ORDER] Processing ${orderNo} (merchant: ${merchantId}, branch: ${branchId})`);
+
+    // Get WhatsApp config for this branch
+    const configPath = `merchants/${merchantId}/branches/${branchId}/config/notifications`;
+    const config = await getNotificationConfig(FIREBASE_PROJECT_ID, token, configPath);
+
+    if (!config || !config.whatsappEnabled || !config.whatsappNumber) {
+      console.log(`[NEW ORDER] WhatsApp not configured for branch ${branchId}, skipping`);
+      return;
+    }
+
+    // Send WhatsApp message
+    const message = formatNewOrderMessage(orderNo, table, items, subtotal);
+    const twilioSid = await sendWhatsAppMessage(env, config.whatsappNumber, message);
+
+    if (!twilioSid) {
+      console.log(`[NEW ORDER] Failed to send WhatsApp for ${orderNo}`);
+      return;
+    }
+
+    // Update order with notification flags (idempotent with precondition)
+    const documentName = doc.name;
+    await firestoreCommit(FIREBASE_PROJECT_ID, token, [
+      {
+        update: {
+          name: documentName,
+          fields: {
+            'notifications.waNewSent': { booleanValue: true },
+            'notifications.waNewSentAt': { timestampValue: new Date().toISOString() },
+            'notifications.waNewSid': { stringValue: twilioSid },
+          },
+        },
+        updateMask: {
+          fieldPaths: [
+            'notifications.waNewSent',
+            'notifications.waNewSentAt',
+            'notifications.waNewSid',
+          ],
+        },
+        currentDocument: {
+          exists: true,
+          updateTime: doc.updateTime,
+        },
+      },
+    ]);
+
+    console.log(`[NEW ORDER] ✅ WhatsApp sent for ${orderNo} to ${config.whatsappNumber} (SID: ${twilioSid})`);
+  } catch (error) {
+    console.error(`[NEW ORDER] Error:`, error.message);
+  }
+}
+
+/**
+ * Process a single cancelled order notification
+ */
+async function processCancelledOrder(env, token, doc) {
+  try {
+    const { FIREBASE_PROJECT_ID } = env;
+    const fields = doc.fields;
+
+    // Extract order data
+    const orderNo = firestoreValue(fields.orderNo) || 'N/A';
+    const merchantId = firestoreValue(fields.merchantId);
+    const branchId = firestoreValue(fields.branchId);
+    const table = firestoreValue(fields.table);
+    const subtotal = firestoreValue(fields.subtotal) || 0;
+    const items = firestoreValue(fields.items) || [];
+    const cancellationReason = firestoreValue(fields.cancellationReason);
+
+    console.log(`[CANCELLED] Processing ${orderNo} (merchant: ${merchantId}, branch: ${branchId})`);
+
+    // Get WhatsApp config for this branch
+    const configPath = `merchants/${merchantId}/branches/${branchId}/config/notifications`;
+    const config = await getNotificationConfig(FIREBASE_PROJECT_ID, token, configPath);
+
+    if (!config || !config.whatsappEnabled || !config.whatsappNumber) {
+      console.log(`[CANCELLED] WhatsApp not configured for branch ${branchId}, skipping`);
+      return;
+    }
+
+    // Send WhatsApp message
+    const message = formatCancelledOrderMessage(orderNo, table, items, subtotal, cancellationReason);
+    const twilioSid = await sendWhatsAppMessage(env, config.whatsappNumber, message);
+
+    if (!twilioSid) {
+      console.log(`[CANCELLED] Failed to send WhatsApp for ${orderNo}`);
+      return;
+    }
+
+    // Update order with notification flags (idempotent with precondition)
+    const documentName = doc.name;
+    await firestoreCommit(FIREBASE_PROJECT_ID, token, [
+      {
+        update: {
+          name: documentName,
+          fields: {
+            'notifications.waCancelSent': { booleanValue: true },
+            'notifications.waCancelSentAt': { timestampValue: new Date().toISOString() },
+            'notifications.waCancelSid': { stringValue: twilioSid },
+          },
+        },
+        updateMask: {
+          fieldPaths: [
+            'notifications.waCancelSent',
+            'notifications.waCancelSentAt',
+            'notifications.waCancelSid',
+          ],
+        },
+        currentDocument: {
+          exists: true,
+          updateTime: doc.updateTime,
+        },
+      },
+    ]);
+
+    console.log(`[CANCELLED] ✅ WhatsApp sent for ${orderNo} to ${config.whatsappNumber} (SID: ${twilioSid})`);
+  } catch (error) {
+    console.error(`[CANCELLED] Error:`, error.message);
+  }
+}
+
+/**
+ * Get notification config for a branch
+ */
+async function getNotificationConfig(projectId, token, configPath) {
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${configPath}`;
+
+  const response = await fetch(url, {
+    headers: { 'Authorization': `Bearer ${token}` },
   });
 
-  const subject = `📊 Sales Report - ${dateRange || 'Report'}`;
+  if (!response.ok) {
+    return null;
+  }
 
-  return await sendViaResend({ apiKey, to: toEmail, subject, html });
+  const doc = await response.json();
+
+  return {
+    whatsappEnabled: firestoreValue(doc.fields?.whatsappEnabled) || false,
+    whatsappNumber: firestoreValue(doc.fields?.whatsappNumber) || null,
+  };
 }
 
-function orderNotificationTemplate(data) {
-  const items = toArray(data.items);
+// ============================================================================
+// TWILIO WHATSAPP
+// ============================================================================
 
-  const itemsHtml = items
-    .map((item) => {
-      const name = safeText(item?.name, 'Item');
-      const qty = toNumber(item?.qty, 1);
-      const note = safeText(item?.note, '');
-      const price = toNumber(item?.price, 0);
+/**
+ * Send WhatsApp message via Twilio
+ * Returns Twilio message SID on success, null on failure
+ */
+async function sendWhatsAppMessage(env, toNumber, message) {
+  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM } = env;
 
-      return `
-      <tr>
-        <td style="padding: 8px; border-bottom: 1px solid #eee;">
-          ${name} ${qty > 1 ? `(x${qty})` : ''}
-          ${note ? `<br/><span style="font-size: 12px; color: #666;">Note: ${note}</span>` : ''}
-        </td>
-        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">
-          ${price.toFixed(3)} BHD
-        </td>
-      </tr>
-    `;
-    })
-    .join('');
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_FROM) {
+    console.error('[TWILIO] Missing Twilio credentials');
+    return null;
+  }
 
-  const subtotal = toNumber(data.subtotal, 0);
+  // Ensure E.164 format with whatsapp: prefix
+  const to = toNumber.startsWith('whatsapp:') ? toNumber : `whatsapp:${toNumber}`;
 
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5;">
-  <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 24px; border-radius: 8px 8px 0 0;">
-      <h1 style="margin: 0; font-size: 24px;">🔔 New Order Received!</h1>
-      <p style="margin: 8px 0 0 0; opacity: 0.9;">You have a new order at ${safeText(
-        data.merchantName,
-        'SweetWeb'
-      )}</p>
-    </div>
-    <div style="padding: 24px;">
-      <div style="background: #f8f9fa; padding: 16px; border-radius: 6px; margin-bottom: 20px;">
-        <h2 style="margin: 0 0 12px 0; font-size: 18px; color: #333;">Order Details</h2>
-        <table style="width: 100%;">
-          <tr>
-            <td style="padding: 4px 0; color: #666;">Order Number:</td>
-            <td style="padding: 4px 0; text-align: right; font-weight: 600; color: #667eea;">${safeText(
-              data.orderNo,
-              '—'
-            )}</td>
-          </tr>
-          ${
-            safeText(data.table, '')
-              ? `
-          <tr>
-            <td style="padding: 4px 0; color: #666;">Table:</td>
-            <td style="padding: 4px 0; text-align: right; font-weight: 600;">${safeText(
-              data.table,
-              ''
-            )}</td>
-          </tr>
-          `
-              : ''
-          }
-          <tr>
-            <td style="padding: 4px 0; color: #666;">Time:</td>
-            <td style="padding: 4px 0; text-align: right;">${safeText(data.timestamp, '')}</td>
-          </tr>
-          <tr>
-            <td style="padding: 4px 0; color: #666;">Status:</td>
-            <td style="padding: 4px 0; text-align: right;">
-              <span style="background: #fef3c7; color: #92400e; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">
-                PENDING
-              </span>
-            </td>
-          </tr>
-        </table>
-      </div>
-      <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #333;">Items</h3>
-      <table style="width: 100%; border-collapse: collapse;">
-        ${itemsHtml || '<tr><td style="padding:8px;">No items</td><td></td></tr>'}
-        <tr>
-          <td style="padding: 16px 8px 8px 8px; font-weight: 600; font-size: 16px;">Subtotal</td>
-          <td style="padding: 16px 8px 8px 8px; text-align: right; font-weight: 600; font-size: 16px; color: #667eea;">
-            ${subtotal.toFixed(3)} BHD
-          </td>
-        </tr>
-      </table>
-      <div style="margin-top: 24px; text-align: center;">
-        <a href="${safeText(
-          data.dashboardUrl,
-          '#'
-        )}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600;">
-          View in Dashboard →
-        </a>
-      </div>
-    </div>
-    <div style="padding: 16px 24px; background: #f8f9fa; border-radius: 0 0 8px 8px; text-align: center; color: #666; font-size: 12px;">
-      <p style="margin: 0;">This is an automated notification from SweetWeb</p>
-    </div>
-  </div>
-</body>
-</html>
-  `;
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+
+  const auth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      From: TWILIO_WHATSAPP_FROM,
+      To: to,
+      Body: message,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    console.error('[TWILIO] Failed to send WhatsApp:', error);
+    return null;
+  }
+
+  const result = await response.json();
+  return result.sid;
 }
 
-function reportTemplate(data) {
-  const topItems = toArray(data.topItems);
-  const ordersByStatus = toArray(data.ordersByStatus);
+/**
+ * Format new order WhatsApp message
+ */
+function formatNewOrderMessage(orderNo, table, items, subtotal) {
+  let message = `🔔 *New Order: ${orderNo}*\n\n`;
 
-  const topItemsHtml = topItems
-    .slice(0, 5)
-    .map((item, idx) => {
-      const name = safeText(item?.name, 'Item');
-      const count = toNumber(item?.count, 0);
-      const revenue = toNumber(item?.revenue, 0);
-      return `
-      <tr>
-        <td style="padding: 8px; border-bottom: 1px solid #eee;">${idx + 1}. ${name}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: center;">${count}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">${revenue.toFixed(
-          3
-        )} BHD</td>
-      </tr>
-    `;
-    })
-    .join('');
+  if (table) {
+    message += `📍 Table: ${table}\n\n`;
+  }
 
-  const totalOrders = Math.max(1, toNumber(data.totalOrders, 0));
-  const statusHtml = ordersByStatus
-    .map((s) => {
-      const status = safeText(s?.status, 'status');
-      const count = toNumber(s?.count, 0);
-      const width = Math.max(0, Math.min(100, (count / totalOrders) * 100));
-      return `
-      <div style="margin-bottom: 8px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-          <span style="font-size: 14px; text-transform: capitalize;">${status}</span>
-          <span style="font-weight: 600;">${count}</span>
-        </div>
-        <div style="background: #e5e7eb; height: 8px; border-radius: 4px; overflow: hidden;">
-          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); height: 100%; width: ${width}%;"></div>
-        </div>
-      </div>
-    `;
-    })
-    .join('');
+  message += `*Items:*\n`;
+  items.forEach(item => {
+    const name = item.name || 'Unknown';
+    const qty = item.qty || 1;
+    const price = (item.price || 0).toFixed(3);
+    message += `• ${name} (x${qty}) - ${price} BHD\n`;
+    if (item.note) {
+      message += `  _Note: ${item.note}_\n`;
+    }
+  });
 
-  const totalRevenue = toNumber(data.totalRevenue, 0);
-  const averageOrder = toNumber(data.averageOrder, 0);
-  const cancelledOrders = toNumber(data.cancelledOrders, 0);
+  message += `\n*Total: ${subtotal.toFixed(3)} BHD*\n\n`;
+  message += `⏰ Status: PENDING`;
 
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5;">
-  <div style="max-width: 700px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 24px; border-radius: 8px 8px 0 0;">
-      <h1 style="margin: 0; font-size: 24px;">📊 Sales Report</h1>
-      <p style="margin: 8px 0 0 0; opacity: 0.9;">${safeText(
-        data.merchantName,
-        'SweetWeb'
-      )} • ${safeText(data.dateRange, '')}</p>
-    </div>
-    <div style="padding: 24px;">
-      <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px;">
-        <div style="background: #f0fdf4; padding: 16px; border-radius: 6px; border-left: 4px solid #22c55e;">
-          <div style="font-size: 12px; color: #166534; font-weight: 600; margin-bottom: 4px;">TOTAL REVENUE</div>
-          <div style="font-size: 24px; font-weight: 700; color: #15803d;">${totalRevenue.toFixed(
-            3
-          )} BHD</div>
-        </div>
-        <div style="background: #eff6ff; padding: 16px; border-radius: 6px; border-left: 4px solid #3b82f6;">
-          <div style="font-size: 12px; color: #1e40af; font-weight: 600; margin-bottom: 4px;">TOTAL ORDERS</div>
-          <div style="font-size: 24px; font-weight: 700; color: #1e3a8a;">${toNumber(
-            data.totalOrders,
-            0
-          )}</div>
-        </div>
-        <div style="background: #fef3c7; padding: 16px; border-radius: 6px; border-left: 4px solid #f59e0b;">
-          <div style="font-size: 12px; color: #92400e; font-weight: 600; margin-bottom: 4px;">AVG ORDER VALUE</div>
-          <div style="font-size: 24px; font-weight: 700; color: #b45309;">${averageOrder.toFixed(
-            3
-          )} BHD</div>
-        </div>
-        <div style="background: #fef2f2; padding: 16px; border-radius: 6px; border-left: 4px solid #ef4444;">
-          <div style="font-size: 12px; color: #991b1b; font-weight: 600; margin-bottom: 4px;">CANCELLED</div>
-          <div style="font-size: 24px; font-weight: 700; color: #b91c1c;">${cancelledOrders}</div>
-        </div>
-      </div>
-
-      <div style="margin-bottom: 24px;">
-        <h2 style="margin: 0 0 12px 0; font-size: 18px; color: #333;">🏆 Top Selling Items</h2>
-        <table style="width: 100%; border-collapse: collapse;">
-          <thead>
-            <tr style="background: #f8f9fa;">
-              <th style="padding: 8px; text-align: left; font-size: 12px; color: #666;">Item</th>
-              <th style="padding: 8px; text-align: center; font-size: 12px; color: #666;">Orders</th>
-              <th style="padding: 8px; text-align: right; font-size: 12px; color: #666;">Revenue</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${topItemsHtml || '<tr><td style="padding:8px;">No data</td><td></td><td></td></tr>'}
-          </tbody>
-        </table>
-      </div>
-
-      <div style="margin-bottom: 24px;">
-        <h2 style="margin: 0 0 12px 0; font-size: 18px; color: #333;">📈 Orders by Status</h2>
-        ${statusHtml || '<div>No status data</div>'}
-      </div>
-    </div>
-
-    <div style="padding: 16px 24px; background: #f8f9fa; border-radius: 0 0 8px 8px; text-align: center; color: #666; font-size: 12px;">
-      <p style="margin: 0;">Generated by SweetWeb</p>
-    </div>
-  </div>
-</body>
-</html>
-  `;
+  return message;
 }
 
-function customerConfirmationTemplate(data) {
-  const items = toArray(data.items);
+/**
+ * Format cancelled order WhatsApp message
+ */
+function formatCancelledOrderMessage(orderNo, table, items, subtotal, reason) {
+  let message = `❌ *Order Cancelled: ${orderNo}*\n\n`;
 
-  const itemsHtml = items
-    .map((item) => {
-      const name = safeText(item?.name, 'Item');
-      const qty = Math.max(1, toNumber(item?.qty, 1));
-      const note = safeText(item?.note, '');
-      const price = toNumber(item?.price, 0);
+  if (table) {
+    message += `📍 Table: ${table}\n\n`;
+  }
 
-      return `
-      <tr>
-        <td style="padding: 12px 8px; border-bottom: 1px solid #eee;">
-          <div style="font-weight: 500; margin-bottom: 4px;">${name}</div>
-          ${note ? `<div style="font-size: 12px; color: #666; font-style: italic;">Note: ${note}</div>` : ''}
-        </td>
-        <td style="padding: 12px 8px; border-bottom: 1px solid #eee; text-align: center; color: #666;">
-          x${qty}
-        </td>
-        <td style="padding: 12px 8px; border-bottom: 1px solid #eee; text-align: right; font-weight: 500;">
-          ${price.toFixed(3)} BHD
-        </td>
-      </tr>
-    `;
-    })
-    .join('');
+  if (reason) {
+    message += `*Reason:* ${reason}\n\n`;
+  }
 
-  const subtotal = toNumber(data.subtotal, 0);
+  message += `*Items:*\n`;
+  items.forEach(item => {
+    const name = item.name || 'Unknown';
+    const qty = item.qty || 1;
+    const price = (item.price || 0).toFixed(3);
+    message += `• ${name} (x${qty}) - ${price} BHD\n`;
+  });
 
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5;">
-  <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-    <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 32px 24px; border-radius: 8px 8px 0 0; text-align: center;">
-      <div style="font-size: 48px; margin-bottom: 8px;">✅</div>
-      <h1 style="margin: 0; font-size: 28px; font-weight: 700;">Order Confirmed!</h1>
-      <p style="margin: 12px 0 0 0; opacity: 0.95; font-size: 16px;">Thank you for your order</p>
-    </div>
+  message += `\n*Total: ${subtotal.toFixed(3)} BHD*`;
 
-    <div style="padding: 32px 24px;">
-      <div style="background: #f0fdf4; padding: 20px; border-radius: 8px; margin-bottom: 24px; border-left: 4px solid #10b981;">
-        <table style="width: 100%;">
-          <tr>
-            <td style="padding: 6px 0; color: #666; font-size: 14px;">Order Number:</td>
-            <td style="padding: 6px 0; text-align: right; font-weight: 700; font-size: 18px; color: #059669;">${safeText(
-              data.orderNo,
-              '—'
-            )}</td>
-          </tr>
-          <tr>
-            <td style="padding: 6px 0; color: #666; font-size: 14px;">Restaurant:</td>
-            <td style="padding: 6px 0; text-align: right; font-weight: 600; color: #333;">${safeText(
-              data.merchantName,
-              'SweetWeb'
-            )}</td>
-          </tr>
-          ${
-            safeText(data.table, '')
-              ? `
-          <tr>
-            <td style="padding: 6px 0; color: #666; font-size: 14px;">Table Number:</td>
-            <td style="padding: 6px 0; text-align: right; font-weight: 600; color: #333;">${safeText(
-              data.table,
-              ''
-            )}</td>
-          </tr>
-          `
-              : ''
-          }
-          <tr>
-            <td style="padding: 6px 0; color: #666; font-size: 14px;">Order Time:</td>
-            <td style="padding: 6px 0; text-align: right; color: #333;">${safeText(data.timestamp, '')}</td>
-          </tr>
-          ${
-            safeText(data.estimatedTime, '')
-              ? `
-          <tr>
-            <td style="padding: 6px 0; color: #666; font-size: 14px;">Estimated Time:</td>
-            <td style="padding: 6px 0; text-align: right; font-weight: 600; color: #059669;">${safeText(
-              data.estimatedTime,
-              ''
-            )}</td>
-          </tr>
-          `
-              : ''
-          }
-        </table>
-      </div>
-
-      <div style="text-align: center; margin-bottom: 24px;">
-        <div style="display: inline-block; background: #fef3c7; color: #92400e; padding: 12px 24px; border-radius: 24px; font-weight: 600; font-size: 14px;">
-          🕐 Your order is being prepared
-        </div>
-      </div>
-
-      <h2 style="margin: 0 0 16px 0; font-size: 18px; color: #333; padding-bottom: 8px; border-bottom: 2px solid #f3f4f6;">Order Details</h2>
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-        <thead>
-          <tr style="background: #f9fafb;">
-            <th style="padding: 10px 8px; text-align: left; font-size: 13px; color: #6b7280; font-weight: 600;">Item</th>
-            <th style="padding: 10px 8px; text-align: center; font-size: 13px; color: #6b7280; font-weight: 600;">Qty</th>
-            <th style="padding: 10px 8px; text-align: right; font-size: 13px; color: #6b7280; font-weight: 600;">Price</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${itemsHtml || '<tr><td style="padding:10px;">No items</td><td></td><td></td></tr>'}
-        </tbody>
-      </table>
-
-      <div style="background: #f9fafb; padding: 20px; border-radius: 8px; margin-bottom: 24px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 18px; font-weight: 600; color: #333;">Total Amount</span>
-          <span style="font-size: 24px; font-weight: 700; color: #059669;">${subtotal.toFixed(3)} BHD</span>
-        </div>
-      </div>
-
-      <div style="text-align: center; padding: 24px; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 8px;">
-        <p style="margin: 0 0 8px 0; font-size: 16px; color: #333; font-weight: 500;">Thank you for choosing ${safeText(
-          data.merchantName,
-          'SweetWeb'
-        )}!</p>
-        <p style="margin: 0; font-size: 14px; color: #666;">We're preparing your order with care</p>
-      </div>
-    </div>
-
-    <div style="padding: 20px 24px; background: #f9fafb; border-radius: 0 0 8px 8px; text-align: center; color: #6b7280; font-size: 12px; border-top: 1px solid #e5e7eb;">
-      <p style="margin: 0 0 8px 0;">This is an automated confirmation email from SweetWeb</p>
-      <p style="margin: 0; color: #9ca3af;">Please do not reply to this email</p>
-    </div>
-  </div>
-</body>
-</html>
-  `;
+  return message;
 }
 
-function orderCancellationTemplate(data) {
-  const items = toArray(data.items);
+// ============================================================================
+// UTILITIES
+// ============================================================================
 
-  const itemsHtml = items
-    .map((item) => {
-      const name = safeText(item?.name, 'Item');
-      const qty = toNumber(item?.qty, 1);
-      const note = safeText(item?.note, '');
-      const price = toNumber(item?.price, 0);
-
-      return `
-      <tr>
-        <td style="padding: 8px; border-bottom: 1px solid #eee;">
-          ${name} ${qty > 1 ? `(x${qty})` : ''}
-          ${note ? `<br/><span style="font-size: 12px; color: #666;">Note: ${note}</span>` : ''}
-        </td>
-        <td style="padding: 8px; border-bottom: 1px solid #eee; text-align: right;">
-          ${price.toFixed(3)} BHD
-        </td>
-      </tr>
-    `;
-    })
-    .join('');
-
-  const subtotal = toNumber(data.subtotal, 0);
-  const cancellationReason = safeText(data.cancellationReason, '');
-
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5;">
-  <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-    <div style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; padding: 24px; border-radius: 8px 8px 0 0;">
-      <h1 style="margin: 0; font-size: 24px;">❌ Order Cancelled</h1>
-      <p style="margin: 8px 0 0 0; opacity: 0.9;">Order has been cancelled at ${safeText(
-        data.merchantName,
-        'SweetWeb'
-      )}</p>
-    </div>
-    <div style="padding: 24px;">
-      <div style="background: #fef2f2; padding: 16px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #ef4444;">
-        <h2 style="margin: 0 0 12px 0; font-size: 18px; color: #333;">Order Details</h2>
-        <table style="width: 100%;">
-          <tr>
-            <td style="padding: 4px 0; color: #666;">Order Number:</td>
-            <td style="padding: 4px 0; text-align: right; font-weight: 600; color: #ef4444;">${safeText(
-              data.orderNo,
-              '—'
-            )}</td>
-          </tr>
-          ${
-            safeText(data.table, '')
-              ? `
-          <tr>
-            <td style="padding: 4px 0; color: #666;">Table:</td>
-            <td style="padding: 4px 0; text-align: right; font-weight: 600;">${safeText(
-              data.table,
-              ''
-            )}</td>
-          </tr>
-          `
-              : ''
-          }
-          <tr>
-            <td style="padding: 4px 0; color: #666;">Cancelled At:</td>
-            <td style="padding: 4px 0; text-align: right;">${safeText(data.timestamp, '')}</td>
-          </tr>
-          <tr>
-            <td style="padding: 4px 0; color: #666;">Status:</td>
-            <td style="padding: 4px 0; text-align: right;">
-              <span style="background: #fee2e2; color: #991b1b; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">
-                CANCELLED
-              </span>
-            </td>
-          </tr>
-        </table>
-      </div>
-
-      ${
-        cancellationReason
-          ? `
-      <div style="background: #fffbeb; padding: 16px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #f59e0b;">
-        <h3 style="margin: 0 0 8px 0; font-size: 14px; color: #92400e; font-weight: 600;">Cancellation Reason</h3>
-        <p style="margin: 0; color: #78350f; font-size: 14px;">${cancellationReason}</p>
-      </div>
-      `
-          : ''
-      }
-
-      <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #333;">Items</h3>
-      <table style="width: 100%; border-collapse: collapse;">
-        ${itemsHtml || '<tr><td style="padding:8px;">No items</td><td></td></tr>'}
-        <tr>
-          <td style="padding: 16px 8px 8px 8px; font-weight: 600; font-size: 16px;">Subtotal</td>
-          <td style="padding: 16px 8px 8px 8px; text-align: right; font-weight: 600; font-size: 16px; color: #ef4444;">
-            ${subtotal.toFixed(3)} BHD
-          </td>
-        </tr>
-      </table>
-      <div style="margin-top: 24px; text-align: center;">
-        <a href="${safeText(
-          data.dashboardUrl,
-          '#'
-        )}" style="display: inline-block; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; text-decoration: none; padding: 12px 32px; border-radius: 6px; font-weight: 600;">
-          View in Dashboard →
-        </a>
-      </div>
-    </div>
-    <div style="padding: 16px 24px; background: #f8f9fa; border-radius: 0 0 8px 8px; text-align: center; color: #666; font-size: 12px;">
-      <p style="margin: 0;">This is an automated notification from SweetWeb</p>
-    </div>
-  </div>
-</body>
-</html>
-  `;
+function jsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
 }
