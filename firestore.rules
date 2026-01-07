@@ -27,6 +27,13 @@ service cloud.firestore {
     function isOwner(merchantId, branchId) {
       return isAdmin(merchantId, branchId);
     }
+
+    // Service account check (for Cloudflare Worker)
+    function isServiceAccount() {
+      return request.auth != null &&
+        request.auth.token.email != null &&
+        request.auth.token.email.matches('.*@.*\\.iam\\.gserviceaccount\\.com$');
+    }
     
     // ==================== GLOBAL COLLECTIONS ====================
     
@@ -90,12 +97,32 @@ service cloud.firestore {
             request.resource.data.items.size() <= 50 &&
             request.resource.data.subtotal is number &&
             request.resource.data.subtotal >= 0 &&
-            request.resource.data.subtotal <= 1000;
+            request.resource.data.subtotal <= 1000 &&
+            // WhatsApp notification tracking: must be initialized on creation
+            request.resource.data.notifications is map &&
+            request.resource.data.notifications.keys().hasOnly(['waNewSent', 'waCancelSent']) &&
+            request.resource.data.notifications.waNewSent == false &&
+            request.resource.data.notifications.waCancelSent == false;
 
           // READ: Own orders or staff
           allow read: if isSignedIn() &&
             (resource.data.userId == request.auth.uid ||
              isStaff(merchantId, branchId));
+
+          // UPDATE: Service account (Cloudflare Worker) can ONLY update notification fields
+          allow update: if isServiceAccount() &&
+            // All non-notification fields must remain unchanged
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'notifications'
+            ]) &&
+            // Notifications field must be a map
+            request.resource.data.notifications is map &&
+            // Only valid notification fields allowed
+            request.resource.data.notifications.keys().hasOnly([
+              'waNewSent', 'waCancelSent',
+              'waNewSentAt', 'waNewSid',
+              'waCancelSentAt', 'waCancelSid'
+            ]);
 
           // UPDATE: Staff (including admin) can ONLY update order status workflow fields
           // STRICT VALIDATION: Only allowed fields can be modified
@@ -108,6 +135,7 @@ service cloud.firestore {
             request.resource.data.subtotal == resource.data.subtotal &&
             request.resource.data.createdAt == resource.data.createdAt &&
             request.resource.data.orderNo == resource.data.orderNo &&
+            request.resource.data.notifications == resource.data.notifications &&
             // Optional immutable fields (if they exist, they cannot be changed)
             (!resource.data.keys().hasAny(['customerPhone']) || request.resource.data.customerPhone == resource.data.customerPhone) &&
             (!resource.data.keys().hasAny(['customerCarPlate']) || request.resource.data.customerCarPlate == resource.data.customerCarPlate) &&
@@ -163,6 +191,27 @@ service cloud.firestore {
 
           // ADMIN WRITE: Only admins can update branding & loyalty
           allow write: if isAdmin(merchantId, branchId);
+        }
+
+        // -------------------- CONFIG (WHATSAPP NOTIFICATIONS) --------------------
+        match /config/notifications {
+          // STAFF READ: Only staff can see WhatsApp notification config
+          allow read: if isStaff(merchantId, branchId);
+
+          // ADMIN CREATE/UPDATE: Only admins can configure WhatsApp notifications
+          allow create, update: if isAdmin(merchantId, branchId) &&
+            // whatsappEnabled must be boolean
+            request.resource.data.whatsappEnabled is bool &&
+            // If enabled, whatsappNumber must be valid E.164 format
+            (!request.resource.data.whatsappEnabled ||
+             (request.resource.data.whatsappNumber is string &&
+              request.resource.data.whatsappNumber.matches('^\\+[1-9]\\d{7,14}$'))) &&
+            // Audit fields required
+            request.resource.data.updatedAt == request.time &&
+            request.resource.data.updatedBy == request.auth.uid;
+
+          // No deletes (preserve notification history)
+          allow delete: if false;
         }
 
         // -------------------- CUSTOMERS (LOYALTY) --------------------
