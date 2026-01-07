@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb, debugPrint;
 import 'package:flutter_web_plugins/url_strategy.dart';
 
 // Firebase
@@ -25,7 +25,9 @@ Future<void> _configureEmulatorsIfNeeded() async {
   // Auth emulator
   try {
     await FirebaseAuth.instance.useAuthEmulator(_emuHost, 9099);
-  } catch (_) {}
+  } catch (e) {
+    debugPrint('Failed to connect to Auth emulator: $e');
+  }
 
   // Firestore emulator
   try {
@@ -34,7 +36,9 @@ Future<void> _configureEmulatorsIfNeeded() async {
       sslEnabled: false, // required for web + emulator
       persistenceEnabled: false,
     );
-  } catch (_) {}
+  } catch (e) {
+    debugPrint('Failed to connect to Firestore emulator: $e');
+  }
 }
 
 Future<void> _ensureSignedIn() async {
@@ -42,7 +46,9 @@ Future<void> _ensureSignedIn() async {
     if (FirebaseAuth.instance.currentUser == null) {
       await FirebaseAuth.instance.signInAnonymously();
     }
-  } catch (_) {}
+  } catch (e) {
+    debugPrint('Failed to sign in anonymously: $e');
+  }
 }
 
 Future<void> main() async {

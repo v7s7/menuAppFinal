@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'email_service.dart';
 import '../config/email_config.dart';
@@ -23,8 +24,8 @@ class OrderNotificationService {
     // Record when service starts - only listen for orders created AFTER this time
     // This prevents sending emails for old orders and avoids rate limiting
     _serviceStartTime = DateTime.now();
-    print('[OrderNotificationService] Started listening for orders created after ${_serviceStartTime}');
-    print('[OrderNotificationService] All emails will be sent to: ${EmailConfig.defaultEmail}');
+    debugPrint('[OrderNotificationService] Started listening for orders created after $_serviceStartTime');
+    debugPrint('[OrderNotificationService] All emails will be sent to: ${EmailConfig.defaultEmail}');
 
     _subscription = FirebaseFirestore.instance
         .collection('merchants/$merchantId/branches/$branchId/orders')
@@ -39,7 +40,7 @@ class OrderNotificationService {
 
           // Skip if already processed
           if (_processedOrders.contains(orderId)) {
-            print('[OrderNotificationService] Skipping already processed order: $orderId');
+            debugPrint('[OrderNotificationService] Skipping already processed order: $orderId');
             continue;
           }
 
@@ -102,18 +103,18 @@ class OrderNotificationService {
       );
 
       if (result.success) {
-        print('[OrderNotificationService] ✅ Email sent for order $orderNo to ${EmailConfig.defaultEmail}: ${result.messageId}');
+        debugPrint('[OrderNotificationService] ✅ Email sent for order $orderNo to ${EmailConfig.defaultEmail}: ${result.messageId}');
       } else {
         // Check if it's a rate limit error
         final error = result.error ?? '';
         if (error.contains('Too many requests') || error.contains('rate limit')) {
-          print('[OrderNotificationService] ⚠️ Rate limit reached for order $orderNo. Email will be retried on next order.');
+          debugPrint('[OrderNotificationService] ⚠️ Rate limit reached for order $orderNo. Email will be retried on next order.');
         } else {
-          print('[OrderNotificationService] ❌ Failed to send email for order $orderNo: ${result.error}');
+          debugPrint('[OrderNotificationService] ❌ Failed to send email for order $orderNo: ${result.error}');
         }
       }
     } catch (e) {
-      print('[OrderNotificationService] ❌ Exception sending notification: $e');
+      debugPrint('[OrderNotificationService] ❌ Exception sending notification: $e');
     }
   }
 
