@@ -1,0 +1,152 @@
+[1mdiff --git a/firestore.rules b/firestore.rules[m
+[1mindex 6e21ebe..71d8845 100644[m
+[1m--- a/firestore.rules[m
+[1m+++ b/firestore.rules[m
+[36m@@ -1,13 +1,13 @@[m
+ rules_version = '2';[m
+ service cloud.firestore {[m
+   match /databases/{database}/documents {[m
+[31m-    [m
+[32m+[m
+     // ==================== HELPER FUNCTIONS ====================[m
+[31m-    [m
+[32m+[m
+     function isSignedIn() {[m
+       return request.auth != null;[m
+     }[m
+[31m-    [m
+[32m+[m
+     function getUserRole(merchantId, branchId) {[m
+       return isSignedIn() &&[m
+         exists(/databases/$(database)/documents/merchants/$(merchantId)/branches/$(branchId)/roles/$(request.auth.uid))[m
+[36m@@ -34,28 +34,28 @@[m [mservice cloud.firestore {[m
+         request.auth.token.email != null &&[m
+         request.auth.token.email.matches('.*@.*\\.iam\\.gserviceaccount\\.com$');[m
+     }[m
+[31m-    [m
+[32m+[m
+     // ==================== GLOBAL COLLECTIONS ====================[m
+[31m-    [m
+[32m+[m
+     // Slugs: Public read, no direct writes (only via Cloud Functions or manual admin)[m
+     match /slugs/{slug} {[m
+       allow read: if true;[m
+       allow create, update: if isSignedIn();  // Allow for branding_admin_page.dart[m
+       allow delete: if false;  // Prevent accidental deletion[m
+     }[m
+[31m-    [m
+[32m+[m
+     // ==================== MERCHANT HIERARCHY ====================[m
+[31m-    [m
+[32m+[m
+     match /merchants/{merchantId} {[m
+       // Merchant doc itself[m
+       allow read: if true;[m
+       allow write: if isOwner(merchantId, 'any');  // At least one branch owner[m
+[31m-      [m
+[32m+[m
+       match /branches/{branchId} {[m
+         // Branch doc[m
+         allow read: if true;[m
+         allow write: if isStaff(merchantId, branchId);[m
+[31m-        [m
+[32m+[m
+         // -------------------- MENU ITEMS --------------------[m
+         match /menuItems/{itemId} {[m
+           // PUBLIC READ: Anyone can see menu items (app filters by isActive on client side)[m
+[36m@@ -87,6 +87,8 @@[m [mservice cloud.firestore {[m
+         // -------------------- ORDERS --------------------[m
+         match /orders/{orderId} {[m
+           // CREATE: Any signed-in user can place order[m
+[32m+[m[32m          // Backwards compatible: notifications is OPTIONAL.[m
+[32m+[m[32m          // If notifications exists, it must be correctly initialized.[m
+           allow create: if isSignedIn() &&[m
+             request.resource.data.userId == request.auth.uid &&[m
+             request.resource.data.status == 'pending' &&[m
+[36m@@ -98,11 +100,15 @@[m [mservice cloud.firestore {[m
+             request.resource.data.subtotal is number &&[m
+             request.resource.data.subtotal >= 0 &&[m
+             request.resource.data.subtotal <= 1000 &&[m
+[31m-            // WhatsApp notification tracking: must be initialized on creation[m
+[31m-            request.resource.data.notifications is map &&[m
+[31m-            request.resource.data.notifications.keys().hasOnly(['waNewSent', 'waCancelSent']) &&[m
+[31m-            request.resource.data.notifications.waNewSent == false &&[m
+[31m-            request.resource.data.notifications.waCancelSent == false;[m
+[32m+[m[32m            ([m
+[32m+[m[32m              !request.resource.data.keys().hasAny(['notifications']) ||[m
+[32m+[m[32m              ([m
+[32m+[m[32m                request.resource.data.notifications is map &&[m
+[32m+[m[32m                request.resource.data.notifications.keys().hasOnly(['waNewSent', 'waCancelSent']) &&[m
+[32m+[m[32m                request.resource.data.notifications.waNewSent == false &&[m
+[32m+[m[32m                request.resource.data.notifications.waCancelSent == false[m
+[32m+[m[32m              )[m
+[32m+[m[32m            );[m
+ [m
+           // READ: Own orders or staff[m
+           allow read: if isSignedIn() &&[m
+[36m@@ -111,10 +117,8 @@[m [mservice cloud.firestore {[m
+ [m
+           // UPDATE: Service account (Cloudflare Worker) can ONLY update notification fields[m
+           allow update: if isServiceAccount() &&[m
+[31m-            // All non-notification fields must remain unchanged[m
+[31m-            request.resource.data.diff(resource.data).affectedKeys().hasOnly([[m
+[31m-              'notifications'[m
+[31m-            ]) &&[m
+[32m+[m[32m            // Only notifications can change at the top-level[m
+[32m+[m[32m            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notifications']) &&[m
+             // Notifications field must be a map[m
+             request.resource.data.notifications is map &&[m
+             // Only valid notification fields allowed[m
+[36m@@ -135,6 +139,7 @@[m [mservice cloud.firestore {[m
+             request.resource.data.subtotal == resource.data.subtotal &&[m
+             request.resource.data.createdAt == resource.data.createdAt &&[m
+             request.resource.data.orderNo == resource.data.orderNo &&[m
+[32m+[m[32m            // Staff cannot change notifications (reserved for service account)[m
+             request.resource.data.notifications == resource.data.notifications &&[m
+             // Optional immutable fields (if they exist, they cannot be changed)[m
+             (!resource.data.keys().hasAny(['customerPhone']) || request.resource.data.customerPhone == resource.data.customerPhone) &&[m
+[36m@@ -170,7 +175,7 @@[m [mservice cloud.firestore {[m
+           // No deletes (preserve order history)[m
+           allow delete: if false;[m
+         }[m
+[31m-        [m
+[32m+[m
+         // -------------------- ROLES --------------------[m
+         match /roles/{userId} {[m
+           // Individual document read: Staff can read their own, admins can read any[m
+[36m@@ -185,11 +190,9 @@[m [mservice cloud.firestore {[m
+         }[m
+ [m
+         // -------------------- CONFIG (BRANDING & LOYALTY) --------------------[m
+[32m+[m[32m        // Keep branding/loyalty public, BUT block public access to notifications config doc.[m
+         match /config/{docId} {[m
+[31m-          // PUBLIC READ: Anyone can see branding & loyalty settings[m
+[31m-          allow read: if true;[m
+[31m-[m
+[31m-          // ADMIN WRITE: Only admins can update branding & loyalty[m
+[32m+[m[32m          allow read: if docId != 'notifications';[m
+           allow write: if isAdmin(merchantId, branchId);[m
+         }[m
+ [m
+[36m@@ -217,7 +220,6 @@[m [mservice cloud.firestore {[m
+         // -------------------- CUSTOMERS (LOYALTY) --------------------[m
+         match /customers/{phone} {[m
+           // READ: Anyone signed in can read customer profiles (for points display)[m
+[31m-          // Staff can read all customer profiles[m
+           allow read: if isSignedIn();[m
+ [m
+           // CREATE: Allow creating customer profiles during checkout[m
+[36m@@ -278,10 +280,10 @@[m [mservice cloud.firestore {[m
+         }[m
+       }[m
+     }[m
+[31m-    [m
+[32m+[m
+     // ==================== DENY ALL OTHERS ====================[m
+     match /{document=**} {[m
+       allow read, write: if false;[m
+     }[m
+   }[m
+[31m-}[m
+\ No newline at end of file[m
+[32m+[m[32m}[m

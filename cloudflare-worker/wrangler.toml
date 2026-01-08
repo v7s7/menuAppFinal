@@ -1,0 +1,10 @@
+name = "menuapp"
+main = "worker.js"
+compatibility_date = "2024-01-29"
+
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+FIREBASE_PROJECT_ID = "sweets-c4f6b"
+TWILIO_WHATSAPP_NUMBER = "whatsapp:+17179713753"
