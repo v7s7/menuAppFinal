@@ -1,6 +1,6 @@
 name = "menuapp"
-main = "worker.js"
-compatibility_date = "2024-01-29"
+main = "cloudflare-worker/worker.js"
+compatibility_date = "2025-11-27"
 
 [triggers]
 crons = ["* * * * *"]

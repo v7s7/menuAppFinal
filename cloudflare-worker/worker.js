@@ -1,701 +1,637 @@
 /**
- * Cloudflare Worker for SweetWeb WhatsApp Order Notifications
+ * Cloudflare Worker - WhatsApp Order Notifications (merchant-only)
  *
- * Features:
- * - Cron-triggered WhatsApp notifications (runs every 1 minute)
- * - Firestore REST API integration (no Cloud Functions needed)
- * - Idempotent message delivery with persistent tracking
- * - OAuth token caching to reduce auth overhead
+ * Required secrets:
+ * - FIREBASE_SERVICE_ACCOUNT_BASE64 (base64 of service-account json)
+ * - TWILIO_ACCOUNT_SID
+ * - TWILIO_AUTH_TOKEN
+ * Optional secret:
+ * - ENABLED_BRANCHES  e.g. [{"merchantId":"aziz-burgers","branchId":"main"}]
  *
- * Deployment:
- * 1. Deploy to Cloudflare Workers
- * 2. Add Cron Trigger: "* * * * *" (every minute)
- * 3. Add required secrets (see below)
- *
- * Required Secrets:
- * - FIREBASE_PROJECT_ID: Your Firebase project ID
- * - FIREBASE_CLIENT_EMAIL: Service account email
- * - FIREBASE_PRIVATE_KEY: Service account private key (full PEM format)
- * - TWILIO_ACCOUNT_SID: Twilio Account SID
- * - TWILIO_AUTH_TOKEN: Twilio Auth Token
- * - TWILIO_WHATSAPP_FROM: Twilio WhatsApp number (e.g., whatsapp:+14155238886)
+ * Required vars (recommended, but now optional because we fallback):
+ * - FIREBASE_PROJECT_ID (fallbacks to service account project_id if missing)
+ * - TWILIO_WHATSAPP_NUMBER (From number; can be +... or whatsapp:+...)
  */
 
-// Global OAuth token cache (persists across requests in same isolate)
+// OAuth token cache
 let cachedToken = null;
-let tokenExpiry = null;
+let tokenExpiryMs = 0;
 
-// CORS headers for Flutter web app (keep for backward compatibility with email endpoints)
+// Service account cache
+let cachedServiceAccount = null;
+
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
 };
-
-// ============================================================================
-// MAIN WORKER EXPORTS
-// ============================================================================
 
 export default {
-  // HTTP fetch handler (existing email endpoints)
   async fetch(request, env) {
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
-    }
-
-    if (request.method !== 'POST') {
-      return new Response('Method not allowed', { status: 405, headers: corsHeaders });
-    }
-
-    try {
-      const body = await request.json();
-      const action = body?.action;
-      const data = body?.data;
-
-      if (!action || typeof action !== 'string') {
-        return jsonResponse({ success: false, error: 'Missing action' }, 400);
-      }
-
-      // Legacy email endpoints (kept for backward compatibility)
-      if (action === 'order-notification' || action === 'order-cancellation' ||
-          action === 'customer-confirmation' || action === 'report') {
-        return jsonResponse({
-          success: false,
-          error: 'Email notifications are deprecated. WhatsApp-only mode active.'
-        }, 400);
-      }
-
-      return jsonResponse({ success: false, error: 'Invalid action' }, 400);
-    } catch (error) {
-      return jsonResponse({ success: false, error: error?.message || 'Unknown error' }, 500);
-    }
+    if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+    return new Response("Cron-only worker", { status: 200, headers: corsHeaders });
   },
 
-  // Cron trigger handler - runs every minute
   async scheduled(event, env, ctx) {
-    console.log('[CRON] Starting WhatsApp notification check');
+    console.log("[CRON] Starting WhatsApp notification check");
 
     try {
-      // Get OAuth token (cached if still valid)
+      const projectId = await getFirebaseProjectId(env);
+      console.log(`[CONFIG] Using FIREBASE_PROJECT_ID=${projectId}`);
+
       const token = await getFirebaseOAuthToken(env);
 
-      // Process pending orders (status=pending, waNewSent=false)
-      await processPendingOrders(env, token);
+      const enabledBranches = parseEnabledBranches(env);
+      if (enabledBranches.length > 0) {
+        for (const b of enabledBranches) {
+          await processBranch(env, token, projectId, b.merchantId, b.branchId);
+        }
+      } else {
+        console.log("[SCAN] ENABLED_BRANCHES not set → running collectionGroup scan");
+        await processAllBranchesByCollectionGroup(env, token, projectId);
+      }
 
-      // Process cancelled orders (status=cancelled, waCancelSent=false)
-      await processCancelledOrders(env, token);
-
-      console.log('[CRON] Completed successfully');
+      console.log("[CRON] Completed successfully");
     } catch (error) {
-      console.error('[CRON] Error:', error.message);
+      console.error("[CRON] Error:", error?.message || error);
     }
   },
 };
 
 // ============================================================================
-// FIREBASE OAUTH TOKEN GENERATION
+// CONFIG
 // ============================================================================
 
-/**
- * Get Firebase OAuth token for Firestore REST API access
- * Uses cached token if still valid, otherwise generates new one
- */
+function parseEnabledBranches(env) {
+  const raw = env.ENABLED_BRANCHES;
+  if (!raw) return [];
+
+  let s = String(raw).trim();
+
+  // If user saved it with wrapping quotes, strip them
+  if (
+    (s.startsWith("'") && s.endsWith("'")) ||
+    (s.startsWith('"') && s.endsWith('"'))
+  ) {
+    s = s.slice(1, -1).trim();
+  }
+
+  try {
+    const arr = JSON.parse(s);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((x) => x && typeof x.merchantId === "string" && typeof x.branchId === "string")
+      .map((x) => ({ merchantId: x.merchantId, branchId: x.branchId }));
+  } catch {
+    console.warn("[CONFIG] ENABLED_BRANCHES is not valid JSON. Ignoring.");
+    return [];
+  }
+}
+
+// ============================================================================
+// SERVICE ACCOUNT + PROJECT ID
+// ============================================================================
+
+async function getServiceAccount(env) {
+  if (cachedServiceAccount) return cachedServiceAccount;
+
+  const saB64 = env.FIREBASE_SERVICE_ACCOUNT_BASE64;
+  if (!saB64) {
+    throw new Error("Missing FIREBASE_SERVICE_ACCOUNT_BASE64 secret");
+  }
+
+  try {
+    cachedServiceAccount = JSON.parse(atob(saB64));
+    return cachedServiceAccount;
+  } catch {
+    throw new Error("FIREBASE_SERVICE_ACCOUNT_BASE64 is not valid base64 JSON");
+  }
+}
+
+async function getFirebaseProjectId(env) {
+  if (env.FIREBASE_PROJECT_ID && String(env.FIREBASE_PROJECT_ID).trim()) {
+    return String(env.FIREBASE_PROJECT_ID).trim();
+  }
+
+  const sa = await getServiceAccount(env);
+  if (sa?.project_id) return sa.project_id;
+
+  throw new Error("Missing FIREBASE_PROJECT_ID and service account has no project_id");
+}
+
+// ============================================================================
+// FIREBASE OAUTH
+// ============================================================================
+
 async function getFirebaseOAuthToken(env) {
-  // Return cached token if still valid (with 5 minute buffer)
-  if (cachedToken && tokenExpiry && Date.now() < tokenExpiry - 300000) {
-    console.log('[AUTH] Using cached OAuth token');
+  const now = Date.now();
+  if (cachedToken && now < tokenExpiryMs - 5 * 60 * 1000) {
+    console.log("[AUTH] Using cached OAuth token");
     return cachedToken;
   }
 
-  console.log('[AUTH] Generating new OAuth token');
+  console.log("[AUTH] Generating new OAuth token");
 
-  const { FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY } = env;
+  const sa = await getServiceAccount(env);
+  const jwt = await createFirebaseJWT(sa.client_email, sa.private_key);
 
-  if (!FIREBASE_CLIENT_EMAIL || !FIREBASE_PRIVATE_KEY) {
-    throw new Error('Missing Firebase credentials');
-  }
-
-  // Create JWT for OAuth token exchange
-  const jwt = await createFirebaseJWT(FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY);
-
-  // Exchange JWT for OAuth token
-  const response = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  const resp = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
       assertion: jwt,
     }),
   });
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`OAuth token exchange failed: ${error}`);
+  if (!resp.ok) {
+    const t = await resp.text();
+    throw new Error(`OAuth token exchange failed: ${t}`);
   }
 
-  const data = await response.json();
-
-  // Cache token and expiry time
+  const data = await resp.json();
   cachedToken = data.access_token;
-  tokenExpiry = Date.now() + (data.expires_in * 1000);
+  tokenExpiryMs = Date.now() + (data.expires_in * 1000);
 
-  console.log('[AUTH] New OAuth token cached');
+  console.log("[AUTH] New OAuth token cached");
   return cachedToken;
 }
 
-/**
- * Create signed JWT for Firebase service account authentication
- * Uses WebCrypto API (RS256 algorithm)
- */
 async function createFirebaseJWT(clientEmail, privateKeyPem) {
   const now = Math.floor(Date.now() / 1000);
-  const expiry = now + 3600; // 1 hour
+  const exp = now + 3600;
 
-  // JWT header
-  const header = {
-    alg: 'RS256',
-    typ: 'JWT',
-  };
-
-  // JWT payload
+  const header = { alg: "RS256", typ: "JWT" };
   const payload = {
     iss: clientEmail,
     sub: clientEmail,
-    aud: 'https://oauth2.googleapis.com/token',
+    aud: "https://oauth2.googleapis.com/token",
     iat: now,
-    exp: expiry,
-    scope: 'https://www.googleapis.com/auth/datastore',
+    exp,
+    scope: "https://www.googleapis.com/auth/datastore",
   };
 
-  // Encode header and payload
   const encodedHeader = base64UrlEncode(JSON.stringify(header));
   const encodedPayload = base64UrlEncode(JSON.stringify(payload));
   const unsignedToken = `${encodedHeader}.${encodedPayload}`;
 
-  // Import private key for signing
-  const privateKey = await importPrivateKey(privateKeyPem);
+  const key = await importPrivateKey(privateKeyPem);
 
-  // Sign the token
   const signature = await crypto.subtle.sign(
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    privateKey,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    key,
     new TextEncoder().encode(unsignedToken)
   );
 
-  // Create final JWT
-  const encodedSignature = base64UrlEncode(signature);
-  return `${unsignedToken}.${encodedSignature}`;
+  return `${unsignedToken}.${base64UrlEncode(signature)}`;
 }
 
-/**
- * Import RSA private key from PEM format for WebCrypto
- */
-async function importPrivateKey(pemKey) {
-  // Remove PEM headers/footers and whitespace
-  const pemContents = pemKey
-    .replace(/-----BEGIN PRIVATE KEY-----/g, '')
-    .replace(/-----END PRIVATE KEY-----/g, '')
-    .replace(/\\n/g, '')
-    .replace(/\s+/g, '');
+async function importPrivateKey(pem) {
+  const clean = String(pem)
+    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
+    .replace(/-----END PRIVATE KEY-----/g, "")
+    .replace(/\r?\n/g, "")
+    .replace(/\s+/g, "");
 
-  // Decode base64 to binary
-  const binaryKey = base64Decode(pemContents);
+  const binaryDer = base64DecodeToArrayBuffer(clean);
 
-  // Import key for signing
-  return await crypto.subtle.importKey(
-    'pkcs8',
-    binaryKey,
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+  return crypto.subtle.importKey(
+    "pkcs8",
+    binaryDer,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
     false,
-    ['sign']
+    ["sign"]
   );
 }
 
-/**
- * Base64 URL encode (for JWT)
- */
 function base64UrlEncode(data) {
-  const bytes = typeof data === 'string'
-    ? new TextEncoder().encode(data)
-    : new Uint8Array(data);
-
-  let binary = '';
-  bytes.forEach(b => binary += String.fromCharCode(b));
-
-  return btoa(binary)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : new Uint8Array(data);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-/**
- * Base64 decode (for PEM key)
- */
-function base64Decode(base64) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
+function base64DecodeToArrayBuffer(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return bytes.buffer;
 }
 
 // ============================================================================
-// FIRESTORE REST API
+// PROCESSING
 // ============================================================================
 
-/**
- * Run Firestore collectionGroup query
- */
-async function firestoreRunQuery(projectId, token, query) {
-  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery`;
+async function processBranch(env, token, projectId, merchantId, branchId) {
+  console.log(`[BRANCH] Processing ${merchantId}/${branchId}`);
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
+  const config = await getNotificationConfig(env, token, projectId, merchantId, branchId);
+  if (!config?.whatsappEnabled || !config?.whatsappNumber) {
+    console.log(`[BRANCH] WhatsApp disabled/not set for ${merchantId}/${branchId}`);
+    return;
+  }
+
+  const newDocs = await runQueryUnderBranch(env, token, projectId, merchantId, branchId, {
+    status: "pending",
+    flagField: "waNewSent",
+  });
+
+  console.log(`[BRANCH] Found ${newDocs.length} pending orders`);
+  for (const d of newDocs) {
+    await processNewOrder(env, token, projectId, d, merchantId, branchId, config);
+    await sleep(1100);
+  }
+
+  const cancelDocs = await runQueryUnderBranch(env, token, projectId, merchantId, branchId, {
+    status: "cancelled",
+    flagField: "waCancelSent",
+  });
+
+  console.log(`[BRANCH] Found ${cancelDocs.length} cancelled orders`);
+  for (const d of cancelDocs) {
+    await processCancelledOrder(env, token, projectId, d, merchantId, branchId, config);
+    await sleep(1100);
+  }
+}
+
+async function processAllBranchesByCollectionGroup(env, token, projectId) {
+  const pendingDocs = await runCollectionGroupQuery(env, token, projectId, {
+    status: "pending",
+    flagPath: "notifications.waNewSent",
+  });
+
+  console.log(`[SCAN] Found ${pendingDocs.length} pending orders`);
+  for (const d of pendingDocs) {
+    const info = parseOrderPath(d.name);
+    if (!info) continue;
+    const config = await getNotificationConfig(env, token, projectId, info.merchantId, info.branchId);
+    if (!config?.whatsappEnabled || !config?.whatsappNumber) continue;
+    await processNewOrder(env, token, projectId, d, info.merchantId, info.branchId, config);
+    await sleep(1100);
+  }
+
+  const cancelledDocs = await runCollectionGroupQuery(env, token, projectId, {
+    status: "cancelled",
+    flagPath: "notifications.waCancelSent",
+  });
+
+  console.log(`[SCAN] Found ${cancelledDocs.length} cancelled orders`);
+  for (const d of cancelledDocs) {
+    const info = parseOrderPath(d.name);
+    if (!info) continue;
+    const config = await getNotificationConfig(env, token, projectId, info.merchantId, info.branchId);
+    if (!config?.whatsappEnabled || !config?.whatsappNumber) continue;
+    await processCancelledOrder(env, token, projectId, d, info.merchantId, info.branchId, config);
+    await sleep(1100);
+  }
+}
+
+// ============================================================================
+// FIRESTORE QUERIES
+// ============================================================================
+
+async function runQueryUnderBranch(env, token, projectId, merchantId, branchId, { status, flagField }) {
+  const parent = `merchants/${merchantId}/branches/${branchId}`;
+
+  const query = {
+    structuredQuery: {
+      from: [{ collectionId: "orders" }],
+      where: {
+        compositeFilter: {
+          op: "AND",
+          filters: [
+            {
+              fieldFilter: {
+                field: { fieldPath: "status" },
+                op: "EQUAL",
+                value: { stringValue: status },
+              },
+            },
+            {
+              fieldFilter: {
+                field: { fieldPath: `notifications.${flagField}` },
+                op: "EQUAL",
+                value: { booleanValue: false },
+              },
+            },
+          ],
+        },
+      },
+      orderBy: [{ field: { fieldPath: "createdAt" }, direction: "ASCENDING" }],
+      limit: 10,
     },
+  };
+
+  return firestoreRunQuery(projectId, token, query, parent);
+}
+
+async function runCollectionGroupQuery(env, token, projectId, { status, flagPath }) {
+  const query = {
+    structuredQuery: {
+      from: [{ collectionId: "orders", allDescendants: true }],
+      where: {
+        compositeFilter: {
+          op: "AND",
+          filters: [
+            {
+              fieldFilter: {
+                field: { fieldPath: "status" },
+                op: "EQUAL",
+                value: { stringValue: status },
+              },
+            },
+            {
+              fieldFilter: {
+                field: { fieldPath: flagPath },
+                op: "EQUAL",
+                value: { booleanValue: false },
+              },
+            },
+          ],
+        },
+      },
+      orderBy: [{ field: { fieldPath: "createdAt" }, direction: "ASCENDING" }],
+      limit: 10,
+    },
+  };
+
+  return firestoreRunQuery(projectId, token, query, null);
+}
+
+async function firestoreRunQuery(projectId, token, query, parentPathOrNull) {
+  const base = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+  const url = parentPathOrNull ? `${base}/${parentPathOrNull}:runQuery` : `${base}:runQuery`;
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(query),
   });
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Firestore query failed: ${error}`);
+  if (!resp.ok) {
+    const t = await resp.text();
+    throw new Error(`Firestore runQuery failed: ${t}`);
   }
 
-  const results = await response.json();
-
-  // Filter out empty results and extract documents
-  return results
-    .filter(r => r.document)
-    .map(r => ({
+  const results = await resp.json();
+  return (results || [])
+    .filter((r) => r.document)
+    .map((r) => ({
       name: r.document.name,
-      fields: r.document.fields,
+      fields: r.document.fields || {},
       updateTime: r.document.updateTime,
     }));
 }
 
-/**
- * Commit Firestore updates with preconditions (idempotent)
- */
 async function firestoreCommit(projectId, token, writes) {
   const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ writes }),
   });
 
-  if (!response.ok) {
-    const error = await response.text();
-    // Precondition failures are expected (already updated) - don't throw
-    if (error.includes('FAILED_PRECONDITION')) {
-      console.log('[FIRESTORE] Precondition failed (already updated)');
+  if (!resp.ok) {
+    const t = await resp.text();
+    if (t.includes("FAILED_PRECONDITION")) {
+      console.log("[FIRESTORE] Precondition failed (already updated)");
       return null;
     }
-    throw new Error(`Firestore commit failed: ${error}`);
+    throw new Error(`Firestore commit failed: ${t}`);
   }
 
-  return await response.json();
+  return resp.json();
 }
 
-/**
- * Convert Firestore value to JavaScript value
- */
-function firestoreValue(field) {
-  if (!field) return null;
-  if (field.stringValue !== undefined) return field.stringValue;
-  if (field.integerValue !== undefined) return parseInt(field.integerValue);
-  if (field.doubleValue !== undefined) return field.doubleValue;
-  if (field.booleanValue !== undefined) return field.booleanValue;
-  if (field.timestampValue !== undefined) return new Date(field.timestampValue);
-  if (field.arrayValue) return field.arrayValue.values?.map(firestoreValue) || [];
-  if (field.mapValue) {
-    const obj = {};
-    for (const [key, val] of Object.entries(field.mapValue.fields || {})) {
-      obj[key] = firestoreValue(val);
-    }
-    return obj;
-  }
-  return null;
+function parseOrderPath(documentName) {
+  const parts = documentName.split("/documents/")[1]?.split("/") || [];
+  const mi = parts.indexOf("merchants");
+  const bi = parts.indexOf("branches");
+  const oi = parts.indexOf("orders");
+  if (mi === -1 || bi === -1 || oi === -1) return null;
+  return { merchantId: parts[mi + 1], branchId: parts[bi + 1], orderId: parts[oi + 1] };
 }
 
-// ============================================================================
-// ORDER PROCESSING
-// ============================================================================
+async function getNotificationConfig(env, token, projectId, merchantId, branchId) {
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/merchants/${merchantId}/branches/${branchId}/config/notifications`;
 
-/**
- * Process pending orders that need WhatsApp notifications
- * Query: status=pending AND notifications.waNewSent=false
- * Limit: 10 orders per cron run
- */
-async function processPendingOrders(env, token) {
-  console.log('[PENDING] Checking for pending orders needing notifications');
+  const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (resp.status === 404) return null;
+  if (!resp.ok) return null;
 
-  const { FIREBASE_PROJECT_ID } = env;
-
-  // CollectionGroup query for all branches
-  const query = {
-    structuredQuery: {
-      from: [{ collectionId: 'orders', allDescendants: true }],
-      where: {
-        compositeFilter: {
-          op: 'AND',
-          filters: [
-            {
-              fieldFilter: {
-                field: { fieldPath: 'status' },
-                op: 'EQUAL',
-                value: { stringValue: 'pending' },
-              },
-            },
-            {
-              fieldFilter: {
-                field: { fieldPath: 'notifications.waNewSent' },
-                op: 'EQUAL',
-                value: { booleanValue: false },
-              },
-            },
-          ],
-        },
-      },
-      orderBy: [{ field: { fieldPath: 'createdAt' }, direction: 'ASCENDING' }],
-      limit: 10,
-    },
-  };
-
-  const docs = await firestoreRunQuery(FIREBASE_PROJECT_ID, token, query);
-
-  console.log(`[PENDING] Found ${docs.length} pending orders`);
-
-  for (const doc of docs) {
-    await processNewOrder(env, token, doc);
-  }
-}
-
-/**
- * Process cancelled orders that need WhatsApp notifications
- * Query: status=cancelled AND notifications.waCancelSent=false
- * Limit: 10 orders per cron run
- */
-async function processCancelledOrders(env, token) {
-  console.log('[CANCELLED] Checking for cancelled orders needing notifications');
-
-  const { FIREBASE_PROJECT_ID } = env;
-
-  // CollectionGroup query for all branches
-  const query = {
-    structuredQuery: {
-      from: [{ collectionId: 'orders', allDescendants: true }],
-      where: {
-        compositeFilter: {
-          op: 'AND',
-          filters: [
-            {
-              fieldFilter: {
-                field: { fieldPath: 'status' },
-                op: 'EQUAL',
-                value: { stringValue: 'cancelled' },
-              },
-            },
-            {
-              fieldFilter: {
-                field: { fieldPath: 'notifications.waCancelSent' },
-                op: 'EQUAL',
-                value: { booleanValue: false },
-              },
-            },
-          ],
-        },
-      },
-      orderBy: [
-        { field: { fieldPath: 'status' } },
-        { field: { fieldPath: 'cancelledAt' }, direction: 'ASCENDING' },
-      ],
-      limit: 10,
-    },
-  };
-
-  const docs = await firestoreRunQuery(FIREBASE_PROJECT_ID, token, query);
-
-  console.log(`[CANCELLED] Found ${docs.length} cancelled orders`);
-
-  for (const doc of docs) {
-    await processCancelledOrder(env, token, doc);
-  }
-}
-
-/**
- * Process a single new order notification
- */
-async function processNewOrder(env, token, doc) {
-  try {
-    const { FIREBASE_PROJECT_ID } = env;
-    const fields = doc.fields;
-
-    // Extract order data
-    const orderNo = firestoreValue(fields.orderNo) || 'N/A';
-    const merchantId = firestoreValue(fields.merchantId);
-    const branchId = firestoreValue(fields.branchId);
-    const table = firestoreValue(fields.table);
-    const subtotal = firestoreValue(fields.subtotal) || 0;
-    const items = firestoreValue(fields.items) || [];
-
-    console.log(`[NEW ORDER] Processing ${orderNo} (merchant: ${merchantId}, branch: ${branchId})`);
-
-    // Get WhatsApp config for this branch
-    const configPath = `merchants/${merchantId}/branches/${branchId}/config/notifications`;
-    const config = await getNotificationConfig(FIREBASE_PROJECT_ID, token, configPath);
-
-    if (!config || !config.whatsappEnabled || !config.whatsappNumber) {
-      console.log(`[NEW ORDER] WhatsApp not configured for branch ${branchId}, skipping`);
-      return;
-    }
-
-    // Send WhatsApp message
-    const message = formatNewOrderMessage(orderNo, table, items, subtotal);
-    const twilioSid = await sendWhatsAppMessage(env, config.whatsappNumber, message);
-
-    if (!twilioSid) {
-      console.log(`[NEW ORDER] Failed to send WhatsApp for ${orderNo}`);
-      return;
-    }
-
-    // Update order with notification flags (idempotent with precondition)
-    const documentName = doc.name;
-    await firestoreCommit(FIREBASE_PROJECT_ID, token, [
-      {
-        update: {
-          name: documentName,
-          fields: {
-            'notifications.waNewSent': { booleanValue: true },
-            'notifications.waNewSentAt': { timestampValue: new Date().toISOString() },
-            'notifications.waNewSid': { stringValue: twilioSid },
-          },
-        },
-        updateMask: {
-          fieldPaths: [
-            'notifications.waNewSent',
-            'notifications.waNewSentAt',
-            'notifications.waNewSid',
-          ],
-        },
-        currentDocument: {
-          exists: true,
-          updateTime: doc.updateTime,
-        },
-      },
-    ]);
-
-    console.log(`[NEW ORDER] ✅ WhatsApp sent for ${orderNo} to ${config.whatsappNumber} (SID: ${twilioSid})`);
-  } catch (error) {
-    console.error(`[NEW ORDER] Error:`, error.message);
-  }
-}
-
-/**
- * Process a single cancelled order notification
- */
-async function processCancelledOrder(env, token, doc) {
-  try {
-    const { FIREBASE_PROJECT_ID } = env;
-    const fields = doc.fields;
-
-    // Extract order data
-    const orderNo = firestoreValue(fields.orderNo) || 'N/A';
-    const merchantId = firestoreValue(fields.merchantId);
-    const branchId = firestoreValue(fields.branchId);
-    const table = firestoreValue(fields.table);
-    const subtotal = firestoreValue(fields.subtotal) || 0;
-    const items = firestoreValue(fields.items) || [];
-    const cancellationReason = firestoreValue(fields.cancellationReason);
-
-    console.log(`[CANCELLED] Processing ${orderNo} (merchant: ${merchantId}, branch: ${branchId})`);
-
-    // Get WhatsApp config for this branch
-    const configPath = `merchants/${merchantId}/branches/${branchId}/config/notifications`;
-    const config = await getNotificationConfig(FIREBASE_PROJECT_ID, token, configPath);
-
-    if (!config || !config.whatsappEnabled || !config.whatsappNumber) {
-      console.log(`[CANCELLED] WhatsApp not configured for branch ${branchId}, skipping`);
-      return;
-    }
-
-    // Send WhatsApp message
-    const message = formatCancelledOrderMessage(orderNo, table, items, subtotal, cancellationReason);
-    const twilioSid = await sendWhatsAppMessage(env, config.whatsappNumber, message);
-
-    if (!twilioSid) {
-      console.log(`[CANCELLED] Failed to send WhatsApp for ${orderNo}`);
-      return;
-    }
-
-    // Update order with notification flags (idempotent with precondition)
-    const documentName = doc.name;
-    await firestoreCommit(FIREBASE_PROJECT_ID, token, [
-      {
-        update: {
-          name: documentName,
-          fields: {
-            'notifications.waCancelSent': { booleanValue: true },
-            'notifications.waCancelSentAt': { timestampValue: new Date().toISOString() },
-            'notifications.waCancelSid': { stringValue: twilioSid },
-          },
-        },
-        updateMask: {
-          fieldPaths: [
-            'notifications.waCancelSent',
-            'notifications.waCancelSentAt',
-            'notifications.waCancelSid',
-          ],
-        },
-        currentDocument: {
-          exists: true,
-          updateTime: doc.updateTime,
-        },
-      },
-    ]);
-
-    console.log(`[CANCELLED] ✅ WhatsApp sent for ${orderNo} to ${config.whatsappNumber} (SID: ${twilioSid})`);
-  } catch (error) {
-    console.error(`[CANCELLED] Error:`, error.message);
-  }
-}
-
-/**
- * Get notification config for a branch
- */
-async function getNotificationConfig(projectId, token, configPath) {
-  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${configPath}`;
-
-  const response = await fetch(url, {
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const doc = await response.json();
-
+  const doc = await resp.json();
   return {
     whatsappEnabled: firestoreValue(doc.fields?.whatsappEnabled) || false,
     whatsappNumber: firestoreValue(doc.fields?.whatsappNumber) || null,
   };
 }
 
+function firestoreValue(field) {
+  if (!field) return null;
+  if (field.stringValue !== undefined) return field.stringValue;
+  if (field.integerValue !== undefined) return parseInt(field.integerValue, 10);
+  if (field.doubleValue !== undefined) return field.doubleValue;
+  if (field.booleanValue !== undefined) return field.booleanValue;
+  if (field.timestampValue !== undefined) return new Date(field.timestampValue);
+  if (field.arrayValue) return (field.arrayValue.values || []).map(firestoreValue);
+  if (field.mapValue) {
+    const obj = {};
+    const fs = field.mapValue.fields || {};
+    for (const [k, v] of Object.entries(fs)) obj[k] = firestoreValue(v);
+    return obj;
+  }
+  return null;
+}
+
 // ============================================================================
-// TWILIO WHATSAPP
+// ORDER HANDLERS
 // ============================================================================
 
-/**
- * Send WhatsApp message via Twilio
- * Returns Twilio message SID on success, null on failure
- */
+async function processNewOrder(env, token, projectId, doc, merchantId, branchId, config) {
+  try {
+    const fields = doc.fields || {};
+    const orderNo = firestoreValue(fields.orderNo) || "N/A";
+    const table = firestoreValue(fields.table);
+    const subtotal = Number(firestoreValue(fields.subtotal) || 0);
+    const items = firestoreValue(fields.items) || [];
+
+    console.log(`[NEW] Processing ${orderNo} (${merchantId}/${branchId})`);
+
+    const message = formatNewOrderMessage(orderNo, table, items, subtotal);
+    const sid = await sendWhatsAppMessage(env, config.whatsappNumber, message);
+    if (!sid) return;
+
+    const writes = [
+      buildNotificationsUpdateWrite(doc.name, doc.updateTime, {
+        waNewSent: true,
+        waNewSentAt: new Date().toISOString(),
+        waNewSid: sid,
+      }),
+    ];
+
+    await firestoreCommit(projectId, token, writes);
+    console.log(`[NEW] ✅ Sent ${orderNo} to ${config.whatsappNumber} (SID: ${sid})`);
+  } catch (e) {
+    console.error("[NEW] Error:", e?.message || e);
+  }
+}
+
+async function processCancelledOrder(env, token, projectId, doc, merchantId, branchId, config) {
+  try {
+    const fields = doc.fields || {};
+    const orderNo = firestoreValue(fields.orderNo) || "N/A";
+    const table = firestoreValue(fields.table);
+    const subtotal = Number(firestoreValue(fields.subtotal) || 0);
+    const items = firestoreValue(fields.items) || [];
+    const reason = firestoreValue(fields.cancellationReason);
+
+    console.log(`[CANCEL] Processing ${orderNo} (${merchantId}/${branchId})`);
+
+    const message = formatCancelledOrderMessage(orderNo, table, items, subtotal, reason);
+    const sid = await sendWhatsAppMessage(env, config.whatsappNumber, message);
+    if (!sid) return;
+
+    const writes = [
+      buildNotificationsUpdateWrite(doc.name, doc.updateTime, {
+        waCancelSent: true,
+        waCancelSentAt: new Date().toISOString(),
+        waCancelSid: sid,
+      }),
+    ];
+
+    await firestoreCommit(projectId, token, writes);
+    console.log(`[CANCEL] ✅ Sent ${orderNo} to ${config.whatsappNumber} (SID: ${sid})`);
+  } catch (e) {
+    console.error("[CANCEL] Error:", e?.message || e);
+  }
+}
+
+function buildNotificationsUpdateWrite(documentName, updateTime, notifFields) {
+  const notifMap = {};
+  const mask = [];
+
+  for (const [k, v] of Object.entries(notifFields)) {
+    mask.push(`notifications.${k}`);
+    if (typeof v === "boolean") notifMap[k] = { booleanValue: v };
+    else if (typeof v === "string") {
+      if (k.endsWith("At")) notifMap[k] = { timestampValue: v };
+      else notifMap[k] = { stringValue: v };
+    } else if (typeof v === "number") notifMap[k] = { doubleValue: v };
+  }
+
+  // FIX: currentDocument is a oneof (exists OR updateTime). Never set both.
+  const currentDocument = updateTime ? { updateTime } : { exists: true };
+
+  const write = {
+    update: {
+      name: documentName,
+      fields: {
+        notifications: {
+          mapValue: { fields: notifMap },
+        },
+      },
+    },
+    updateMask: { fieldPaths: mask },
+    currentDocument,
+  };
+
+  return write;
+}
+
+// ============================================================================
+// TWILIO
+// ============================================================================
+
 async function sendWhatsAppMessage(env, toNumber, message) {
-  const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM } = env;
+  const sid = env.TWILIO_ACCOUNT_SID;
+  const token = env.TWILIO_AUTH_TOKEN;
 
-  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_WHATSAPP_FROM) {
-    console.error('[TWILIO] Missing Twilio credentials');
+  const fromRaw = env.TWILIO_WHATSAPP_FROM || env.TWILIO_WHATSAPP_NUMBER;
+  if (!sid || !token || !fromRaw) {
+    console.error("[TWILIO] Missing Twilio credentials (SID/TOKEN/FROM)");
     return null;
   }
 
-  // Ensure E.164 format with whatsapp: prefix
-  const to = toNumber.startsWith('whatsapp:') ? toNumber : `whatsapp:${toNumber}`;
+  const from = asWhatsAppAddress(fromRaw);
+  const to = asWhatsAppAddress(toNumber);
 
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`;
+  const auth = btoa(`${sid}:${token}`);
 
-  const auth = btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
-
-  const response = await fetch(url, {
-    method: 'POST',
+  const resp = await fetch(url, {
+    method: "POST",
     headers: {
-      'Authorization': `Basic ${auth}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams({
-      From: TWILIO_WHATSAPP_FROM,
+      From: from,
       To: to,
       Body: message,
     }),
   });
 
-  if (!response.ok) {
-    const error = await response.text();
-    console.error('[TWILIO] Failed to send WhatsApp:', error);
+  if (!resp.ok) {
+    const t = await resp.text();
+    console.error("[TWILIO] Failed:", t);
     return null;
   }
 
-  const result = await response.json();
-  return result.sid;
+  const data = await resp.json();
+  return data.sid;
 }
 
-/**
- * Format new order WhatsApp message
- */
+function asWhatsAppAddress(n) {
+  if (!n) return n;
+  return n.startsWith("whatsapp:") ? n : `whatsapp:${n}`;
+}
+
+// ============================================================================
+// MESSAGES
+// ============================================================================
+
 function formatNewOrderMessage(orderNo, table, items, subtotal) {
-  let message = `🔔 *New Order: ${orderNo}*\n\n`;
+  let msg = `🔔 *New Order: ${orderNo}*\n\n`;
+  if (table) msg += `📍 Table: ${table}\n\n`;
 
-  if (table) {
-    message += `📍 Table: ${table}\n\n`;
+  msg += `*Items:*\n`;
+  for (const it of items) {
+    const name = it?.name || "Unknown";
+    const qty = Number(it?.qty || 1);
+    const price = Number(it?.price || 0);
+    const lineTotal = (price * qty).toFixed(3);
+    msg += `• ${name} (x${qty}) - ${lineTotal} BHD\n`;
+    if (it?.note) msg += `  _Note: ${it.note}_\n`;
   }
 
-  message += `*Items:*\n`;
-  items.forEach(item => {
-    const name = item.name || 'Unknown';
-    const qty = item.qty || 1;
-    const price = (item.price || 0).toFixed(3);
-    message += `• ${name} (x${qty}) - ${price} BHD\n`;
-    if (item.note) {
-      message += `  _Note: ${item.note}_\n`;
-    }
-  });
-
-  message += `\n*Total: ${subtotal.toFixed(3)} BHD*\n\n`;
-  message += `⏰ Status: PENDING`;
-
-  return message;
+  msg += `\n*Total: ${Number(subtotal).toFixed(3)} BHD*\n\n`;
+  msg += `⏰ Status: PENDING`;
+  return msg;
 }
 
-/**
- * Format cancelled order WhatsApp message
- */
 function formatCancelledOrderMessage(orderNo, table, items, subtotal, reason) {
-  let message = `❌ *Order Cancelled: ${orderNo}*\n\n`;
+  let msg = `❌ *Order Cancelled: ${orderNo}*\n\n`;
+  if (table) msg += `📍 Table: ${table}\n\n`;
+  if (reason) msg += `*Reason:* ${reason}\n\n`;
 
-  if (table) {
-    message += `📍 Table: ${table}\n\n`;
+  msg += `*Items:*\n`;
+  for (const it of items) {
+    const name = it?.name || "Unknown";
+    const qty = Number(it?.qty || 1);
+    const price = Number(it?.price || 0);
+    const lineTotal = (price * qty).toFixed(3);
+    msg += `• ${name} (x${qty}) - ${lineTotal} BHD\n`;
   }
 
-  if (reason) {
-    message += `*Reason:* ${reason}\n\n`;
-  }
-
-  message += `*Items:*\n`;
-  items.forEach(item => {
-    const name = item.name || 'Unknown';
-    const qty = item.qty || 1;
-    const price = (item.price || 0).toFixed(3);
-    message += `• ${name} (x${qty}) - ${price} BHD\n`;
-  });
-
-  message += `\n*Total: ${subtotal.toFixed(3)} BHD*`;
-
-  return message;
+  msg += `\n*Total: ${Number(subtotal).toFixed(3)} BHD*`;
+  return msg;
 }
 
 // ============================================================================
-// UTILITIES
+// UTILS
 // ============================================================================
 
-function jsonResponse(body, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
 }
