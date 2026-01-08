@@ -88,7 +88,7 @@ class _AdminOrder {
   final int? loyaltyPointsUsed;
 
   // NEW: Additional checkout fields
-  final String? tableNumber;
+  final String? table;
   final String? customerAddress; // Stored as string representation
 
   // Cancellation
@@ -106,7 +106,7 @@ class _AdminOrder {
     this.customerCarPlate,
     this.loyaltyDiscount,
     this.loyaltyPointsUsed,
-    this.tableNumber,
+    this.table,
     this.customerAddress,
     this.cancellationReason,
   });
@@ -194,7 +194,7 @@ final ordersStreamProvider =
         customerCarPlate: (data['customerCarPlate'] as String?)?.trim(),
         loyaltyDiscount: loyaltyDiscount,
         loyaltyPointsUsed: loyaltyPointsUsed,
-        tableNumber: (data['tableNumber'] as String?)?.trim(),
+        table: (data['table'] as String?)?.trim(),
         customerAddress: (data['customerAddress'] is Map)
             ? _formatAddress(data['customerAddress'] as Map<String, dynamic>)
             : null,
@@ -750,14 +750,14 @@ class _OrderTile extends ConsumerWidget {
                           ),
                         ],
                         // NEW: Table Number (checkout field)
-                        if (o.tableNumber != null && o.tableNumber!.isNotEmpty) ...[
+                        if (o.table != null && o.table!.isNotEmpty) ...[
                           const SizedBox(height: 6),
                           Row(
                             children: [
                               Icon(Icons.table_restaurant, size: 16, color: onSurface.withOpacity(0.6)),
                               const SizedBox(width: 8),
                               Text(
-                                'Table #${o.tableNumber}',
+                                'Table #${o.table}',
                                 style: const TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w600,

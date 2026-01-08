@@ -4,13 +4,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class CheckoutFieldsConfig {
   final bool phoneRequired;
   final bool plateNumberRequired;
-  final bool tableNumberRequired;
+  final bool tableRequired;
   final bool addressRequired;
 
   const CheckoutFieldsConfig({
     this.phoneRequired = true, // Default: phone required (backward compatible)
     this.plateNumberRequired = true, // Default: plate required (backward compatible)
-    this.tableNumberRequired = false, // Default: table not required
+    this.tableRequired = false, // Default: table not required
     this.addressRequired = false, // Default: address not required
   });
 
@@ -28,7 +28,7 @@ class CheckoutFieldsConfig {
     return CheckoutFieldsConfig(
       phoneRequired: data['phoneRequired'] ?? true,
       plateNumberRequired: data['plateNumberRequired'] ?? true,
-      tableNumberRequired: data['tableNumberRequired'] ?? false,
+      tableRequired: data['tableRequired'] ?? false,
       addressRequired: data['addressRequired'] ?? false,
     );
   }
@@ -38,7 +38,7 @@ class CheckoutFieldsConfig {
     return {
       'phoneRequired': phoneRequired,
       'plateNumberRequired': plateNumberRequired,
-      'tableNumberRequired': tableNumberRequired,
+      'tableRequired': tableRequired,
       'addressRequired': addressRequired,
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -46,19 +46,19 @@ class CheckoutFieldsConfig {
 
   /// Check if at least one customer identification field is required
   bool get hasIdentificationField {
-    return phoneRequired || plateNumberRequired || tableNumberRequired;
+    return phoneRequired || plateNumberRequired || tableRequired || addressRequired;
   }
 
   CheckoutFieldsConfig copyWith({
     bool? phoneRequired,
     bool? plateNumberRequired,
-    bool? tableNumberRequired,
+    bool? tableRequired,
     bool? addressRequired,
   }) {
     return CheckoutFieldsConfig(
       phoneRequired: phoneRequired ?? this.phoneRequired,
       plateNumberRequired: plateNumberRequired ?? this.plateNumberRequired,
-      tableNumberRequired: tableNumberRequired ?? this.tableNumberRequired,
+      tableRequired: tableRequired ?? this.tableRequired,
       addressRequired: addressRequired ?? this.addressRequired,
     );
   }

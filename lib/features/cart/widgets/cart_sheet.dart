@@ -63,7 +63,7 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         }
         return;
       }
-      if (config.tableNumberRequired && (_checkoutData.tableNumber == null || _checkoutData.tableNumber!.isEmpty)) {
+      if (config.tableRequired && (_checkoutData.table == null || _checkoutData.table!.isEmpty)) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -112,7 +112,7 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         customerCarPlate: config.plateNumberRequired ? _checkoutData.carPlate : null,
         loyaltyDiscount: loyaltySettings.enabled ? _checkoutData.discount : null,
         loyaltyPointsUsed: loyaltySettings.enabled ? _checkoutData.pointsToUse : null,
-        tableNumber: config.tableNumberRequired ? _checkoutData.tableNumber : null,
+        tableNumber: config.tableRequired ? _checkoutData.table : null,
         customerAddress: config.addressRequired && _checkoutData.address != null
             ? _checkoutData.address!.toMap()
             : null,
@@ -243,7 +243,7 @@ class _CartSheetState extends ConsumerState<CartSheet> {
             // Check if at least required fields are not empty
             if (config.phoneRequired && _checkoutData.phone.isEmpty) return false;
             if (config.plateNumberRequired && _checkoutData.carPlate.isEmpty) return false;
-            if (config.tableNumberRequired && (_checkoutData.tableNumber == null || _checkoutData.tableNumber!.isEmpty)) return false;
+            if (config.tableRequired && (_checkoutData.table == null || _checkoutData.table!.isEmpty)) return false;
             if (config.addressRequired && (_checkoutData.address == null || !_checkoutData.address!.isValid)) return false;
             return true;
           },

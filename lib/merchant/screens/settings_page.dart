@@ -28,7 +28,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   // Checkout fields configuration
   bool _phoneRequired = true;
   bool _plateNumberRequired = true;
-  bool _tableNumberRequired = false;
+  bool _tableRequired = false;
   bool _addressRequired = false;
 
   @override
@@ -72,7 +72,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           // Set checkout fields config
           _phoneRequired = checkoutFieldsConfig.phoneRequired;
           _plateNumberRequired = checkoutFieldsConfig.plateNumberRequired;
-          _tableNumberRequired = checkoutFieldsConfig.tableNumberRequired;
+          _tableRequired = checkoutFieldsConfig.tableRequired;
           _addressRequired = checkoutFieldsConfig.addressRequired;
           _isLoading = false;
         });
@@ -121,9 +121,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       }
 
       // Validate that at least one identification field is required
-      if (!_phoneRequired && !_plateNumberRequired && !_tableNumberRequired) {
+      if (!_phoneRequired && !_plateNumberRequired && !_tableRequired && !_addressRequired) {
         setState(() {
-          _errorMessage = 'At least one identification field (Phone, Plate, or Table) must be required';
+          _errorMessage = 'At least one checkout field (Phone, Plate, Table, or Address) must be required';
           _isSaving = false;
         });
         return;
@@ -144,7 +144,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       final checkoutFieldsConfig = CheckoutFieldsConfig(
         phoneRequired: _phoneRequired,
         plateNumberRequired: _plateNumberRequired,
-        tableNumberRequired: _tableNumberRequired,
+        tableRequired: _tableRequired,
         addressRequired: _addressRequired,
       );
       await checkoutFieldsService.updateCheckoutFieldsConfig(checkoutFieldsConfig);
@@ -432,10 +432,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
                         // Table Number toggle
                         SwitchListTile(
-                          value: _tableNumberRequired,
+                          value: _tableRequired,
                           onChanged: (value) {
                             setState(() {
-                              _tableNumberRequired = value;
+                              _tableRequired = value;
                             });
                           },
                           title: const Text('Table Number'),
@@ -479,7 +479,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                               const SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  'At least one of Phone, Plate, or Table must be required for customer identification. Changes apply immediately to new orders.',
+                                  'At least one checkout field must be required for customer identification. Changes apply immediately to new orders.',
                                   style: theme.textTheme.bodySmall,
                                 ),
                               ),

@@ -35,6 +35,39 @@ service cloud.firestore {
         request.auth.token.email.matches('.*@.*\\.iam\\.gserviceaccount\\.com$');
     }
 
+    // Get checkout fields config for validation
+    function getCheckoutConfig(merchantId, branchId) {
+      let configPath = /databases/$(database)/documents/merchants/$(merchantId)/branches/$(branchId)/config/checkoutFields;
+      return exists(configPath) ? get(configPath).data : {
+        'phoneRequired': true,
+        'plateNumberRequired': true,
+        'tableRequired': false,
+        'addressRequired': false
+      };
+    }
+
+    // Validate required checkout fields based on config
+    function hasRequiredCheckoutFields(merchantId, branchId, orderData) {
+      let config = getCheckoutConfig(merchantId, branchId);
+      return (
+        // If phone required, must be present
+        (!config.phoneRequired || (orderData.keys().hasAny(['customerPhone']) && orderData.customerPhone is string && orderData.customerPhone.size() > 0)) &&
+        // If plate required, must be present
+        (!config.plateNumberRequired || (orderData.keys().hasAny(['customerCarPlate']) && orderData.customerCarPlate is string && orderData.customerCarPlate.size() > 0)) &&
+        // If table required, must be present
+        (!config.tableRequired || (orderData.keys().hasAny(['table']) && orderData.table is string && orderData.table.size() > 0)) &&
+        // If address required, must be present with required fields
+        (!config.addressRequired || (
+          orderData.keys().hasAny(['customerAddress']) &&
+          orderData.customerAddress is map &&
+          orderData.customerAddress.keys().hasAny(['home', 'road', 'block']) &&
+          orderData.customerAddress.home is string && orderData.customerAddress.home.size() > 0 &&
+          orderData.customerAddress.road is string && orderData.customerAddress.road.size() > 0 &&
+          orderData.customerAddress.block is string && orderData.customerAddress.block.size() > 0
+        ))
+      );
+    }
+
     // ==================== GLOBAL COLLECTIONS ====================
 
     // Slugs: Public read, no direct writes (only via Cloud Functions or manual admin)
@@ -89,6 +122,7 @@ service cloud.firestore {
           // CREATE: Any signed-in user can place order
           // Backwards compatible: notifications is OPTIONAL.
           // If notifications exists, it must be correctly initialized.
+          // Config-based validation: Required checkout fields based on merchant config
           allow create: if isSignedIn() &&
             request.resource.data.userId == request.auth.uid &&
             request.resource.data.status == 'pending' &&
@@ -108,7 +142,9 @@ service cloud.firestore {
                 request.resource.data.notifications.waNewSent == false &&
                 request.resource.data.notifications.waCancelSent == false
               )
-            );
+            ) &&
+            // NEW: Validate required checkout fields based on config
+            hasRequiredCheckoutFields(merchantId, branchId, request.resource.data);
 
           // READ: Own orders or staff
           allow read: if isSignedIn() &&
@@ -148,7 +184,6 @@ service cloud.firestore {
             (!resource.data.keys().hasAny(['loyaltyDiscount']) || request.resource.data.loyaltyDiscount == resource.data.loyaltyDiscount) &&
             (!resource.data.keys().hasAny(['loyaltyPointsUsed']) || request.resource.data.loyaltyPointsUsed == resource.data.loyaltyPointsUsed) &&
             // NEW: Additional checkout fields (immutable if present)
-            (!resource.data.keys().hasAny(['tableNumber']) || request.resource.data.tableNumber == resource.data.tableNumber) &&
             (!resource.data.keys().hasAny(['customerAddress']) || request.resource.data.customerAddress == resource.data.customerAddress) &&
             // Status field: Must be valid order status
             request.resource.data.status in ['pending', 'accepted', 'preparing', 'ready', 'served', 'cancelled'] &&

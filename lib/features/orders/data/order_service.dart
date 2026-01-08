@@ -42,7 +42,6 @@ class OrderService {
     String? customerCarPlate,
     double? loyaltyDiscount,
     int? loyaltyPointsUsed,
-    String? tableNumber,
     Map<String, dynamic>? customerAddress,
   }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -119,7 +118,6 @@ class OrderService {
         if (loyaltyDiscount != null) 'loyaltyDiscount': loyaltyDiscount,
         if (loyaltyPointsUsed != null) 'loyaltyPointsUsed': loyaltyPointsUsed,
         // NEW: Additional checkout fields (optional)
-        if (tableNumber != null && tableNumber.trim().isNotEmpty) 'tableNumber': tableNumber.trim(),
         if (customerAddress != null) 'customerAddress': customerAddress,
         // WhatsApp notification tracking flags
         'notifications': {
@@ -140,7 +138,6 @@ class OrderService {
       customerCarPlate: customerCarPlate,
       loyaltyDiscount: loyaltyDiscount,
       loyaltyPointsUsed: loyaltyPointsUsed,
-      tableNumber: tableNumber,
       customerAddress: customerAddress != null ? om.BahrainAddress.fromMap(customerAddress) : null,
     );
     } catch (e, st) {
@@ -195,7 +192,6 @@ class OrderService {
         customerCarPlate: _asNullableString(data['customerCarPlate']),
         loyaltyDiscount: data['loyaltyDiscount'] != null ? _asNum(data['loyaltyDiscount']).toDouble() : null,
         loyaltyPointsUsed: data['loyaltyPointsUsed'] != null ? _asNum(data['loyaltyPointsUsed']).toInt() : null,
-        tableNumber: _asNullableString(data['tableNumber']),
         customerAddress: address,
         cancellationReason: _asNullableString(data['cancellationReason']),
       );

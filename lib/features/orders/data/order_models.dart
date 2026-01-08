@@ -32,7 +32,7 @@ class Order {
   final DateTime createdAt;
   final List<OrderItem> items;
   final double subtotal;
-  final String? table; // from QR later
+  final String? table; // Table number: from QR scan or manual entry at checkout
 
   // Loyalty fields
   final String? customerPhone; // Customer phone number for loyalty
@@ -41,7 +41,6 @@ class Order {
   final int? loyaltyPointsUsed; // Points redeemed for this order
 
   // NEW: Additional checkout fields
-  final String? tableNumber; // Table number for dine-in
   final BahrainAddress? customerAddress; // Home address for delivery
 
   // Cancellation
@@ -59,7 +58,6 @@ class Order {
     this.customerCarPlate,
     this.loyaltyDiscount,
     this.loyaltyPointsUsed,
-    this.tableNumber,
     this.customerAddress,
     this.cancellationReason,
   });
@@ -77,7 +75,6 @@ class Order {
       customerCarPlate: customerCarPlate,
       loyaltyDiscount: loyaltyDiscount,
       loyaltyPointsUsed: loyaltyPointsUsed,
-      tableNumber: tableNumber,
       customerAddress: customerAddress,
       cancellationReason: cancellationReason ?? this.cancellationReason,
     );

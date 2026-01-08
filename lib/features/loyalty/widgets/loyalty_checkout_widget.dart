@@ -20,7 +20,7 @@ final checkoutCarPlateProvider = StateProvider<String>((ref) => '');
 final checkoutPointsToUseProvider = StateProvider<int>((ref) => 0);
 
 /// State provider for table number
-final checkoutTableNumberProvider = StateProvider<String>((ref) => '');
+final checkoutTableProvider = StateProvider<String>((ref) => '');
 
 /// State providers for address fields
 final checkoutAddressHomeProvider = StateProvider<String>((ref) => '');
@@ -55,7 +55,7 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
   final _phoneNumberController = TextEditingController();
   final _carPlateController = TextEditingController();
   final _pointsController = TextEditingController(text: '0');
-  final _tableNumberController = TextEditingController();
+  final _tableController = TextEditingController();
 
   // Address controllers
   final _addressHomeController = TextEditingController();
@@ -69,7 +69,7 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
     _phoneNumberController.dispose();
     _carPlateController.dispose();
     _pointsController.dispose();
-    _tableNumberController.dispose();
+    _tableController.dispose();
     _addressHomeController.dispose();
     _addressRoadController.dispose();
     _addressBlockController.dispose();
@@ -214,9 +214,9 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
         ],
 
         // Table Number Input (conditional)
-        if (config.tableNumberRequired) ...[
+        if (config.tableRequired) ...[
           TextField(
-            controller: _tableNumberController,
+            controller: _tableController,
             decoration: const InputDecoration(
               labelText: 'Table Number',
               hintText: 'e.g., 5',
@@ -227,7 +227,7 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             maxLength: 4,
             onChanged: (value) {
-              ref.read(checkoutTableNumberProvider.notifier).state = value;
+              ref.read(checkoutTableProvider.notifier).state = value;
               _updateCheckoutData(loyaltySettings, config);
             },
           ),
@@ -631,7 +631,7 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
     final pointsToUse = int.tryParse(_pointsController.text) ?? 0;
     final discount = settings.calculateDiscount(pointsToUse);
 
-    final tableNumber = _tableNumberController.text.trim();
+    final table = _tableController.text.trim();
 
     // Build address if required
     BahrainAddress? address;
@@ -658,7 +658,7 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
       carPlate: carPlate,
       pointsToUse: pointsToUse,
       discount: discount,
-      tableNumber: tableNumber.isEmpty ? null : tableNumber,
+      table: table.isEmpty ? null : table,
       address: address,
     );
 

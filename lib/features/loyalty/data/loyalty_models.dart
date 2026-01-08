@@ -212,7 +212,7 @@ class CheckoutData {
   final double discount; // Calculated discount from points
 
   // NEW: Additional checkout fields
-  final String? tableNumber; // Table number for dine-in
+  final String? table; // Table number for dine-in (manual entry or QR)
   final BahrainAddress? address; // Home address for delivery
 
   const CheckoutData({
@@ -220,7 +220,7 @@ class CheckoutData {
     required this.carPlate,
     required this.pointsToUse,
     required this.discount,
-    this.tableNumber,
+    this.table,
     this.address,
   });
 
@@ -229,7 +229,7 @@ class CheckoutData {
     String? carPlate,
     int? pointsToUse,
     double? discount,
-    String? tableNumber,
+    String? table,
     BahrainAddress? address,
   }) {
     return CheckoutData(
@@ -237,7 +237,7 @@ class CheckoutData {
       carPlate: carPlate ?? this.carPlate,
       pointsToUse: pointsToUse ?? this.pointsToUse,
       discount: discount ?? this.discount,
-      tableNumber: tableNumber ?? this.tableNumber,
+      table: table ?? this.table,
       address: address ?? this.address,
     );
   }
