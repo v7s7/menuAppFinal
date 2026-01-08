@@ -1,13 +1,13 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     // ==================== HELPER FUNCTIONS ====================
-    
+
     function isSignedIn() {
       return request.auth != null;
     }
-    
+
     function getUserRole(merchantId, branchId) {
       return isSignedIn() &&
         exists(/databases/$(database)/documents/merchants/$(merchantId)/branches/$(branchId)/roles/$(request.auth.uid))
@@ -27,28 +27,35 @@ service cloud.firestore {
     function isOwner(merchantId, branchId) {
       return isAdmin(merchantId, branchId);
     }
-    
+
+    // Service account check (for Cloudflare Worker)
+    function isServiceAccount() {
+      return request.auth != null &&
+        request.auth.token.email != null &&
+        request.auth.token.email.matches('.*@.*\\.iam\\.gserviceaccount\\.com$');
+    }
+
     // ==================== GLOBAL COLLECTIONS ====================
-    
+
     // Slugs: Public read, no direct writes (only via Cloud Functions or manual admin)
     match /slugs/{slug} {
       allow read: if true;
       allow create, update: if isSignedIn();  // Allow for branding_admin_page.dart
       allow delete: if false;  // Prevent accidental deletion
     }
-    
+
     // ==================== MERCHANT HIERARCHY ====================
-    
+
     match /merchants/{merchantId} {
       // Merchant doc itself
       allow read: if true;
       allow write: if isOwner(merchantId, 'any');  // At least one branch owner
-      
+
       match /branches/{branchId} {
         // Branch doc
         allow read: if true;
         allow write: if isStaff(merchantId, branchId);
-        
+
         // -------------------- MENU ITEMS --------------------
         match /menuItems/{itemId} {
           // PUBLIC READ: Anyone can see menu items (app filters by isActive on client side)
@@ -80,6 +87,8 @@ service cloud.firestore {
         // -------------------- ORDERS --------------------
         match /orders/{orderId} {
           // CREATE: Any signed-in user can place order
+          // Backwards compatible: notifications is OPTIONAL.
+          // If notifications exists, it must be correctly initialized.
           allow create: if isSignedIn() &&
             request.resource.data.userId == request.auth.uid &&
             request.resource.data.status == 'pending' &&
@@ -90,12 +99,34 @@ service cloud.firestore {
             request.resource.data.items.size() <= 50 &&
             request.resource.data.subtotal is number &&
             request.resource.data.subtotal >= 0 &&
-            request.resource.data.subtotal <= 1000;
+            request.resource.data.subtotal <= 1000 &&
+            (
+              !request.resource.data.keys().hasAny(['notifications']) ||
+              (
+                request.resource.data.notifications is map &&
+                request.resource.data.notifications.keys().hasOnly(['waNewSent', 'waCancelSent']) &&
+                request.resource.data.notifications.waNewSent == false &&
+                request.resource.data.notifications.waCancelSent == false
+              )
+            );
 
           // READ: Own orders or staff
           allow read: if isSignedIn() &&
             (resource.data.userId == request.auth.uid ||
              isStaff(merchantId, branchId));
+
+          // UPDATE: Service account (Cloudflare Worker) can ONLY update notification fields
+          allow update: if isServiceAccount() &&
+            // Only notifications can change at the top-level
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notifications']) &&
+            // Notifications field must be a map
+            request.resource.data.notifications is map &&
+            // Only valid notification fields allowed
+            request.resource.data.notifications.keys().hasOnly([
+              'waNewSent', 'waCancelSent',
+              'waNewSentAt', 'waNewSid',
+              'waCancelSentAt', 'waCancelSid'
+            ]);
 
           // UPDATE: Staff (including admin) can ONLY update order status workflow fields
           // STRICT VALIDATION: Only allowed fields can be modified
@@ -108,6 +139,8 @@ service cloud.firestore {
             request.resource.data.subtotal == resource.data.subtotal &&
             request.resource.data.createdAt == resource.data.createdAt &&
             request.resource.data.orderNo == resource.data.orderNo &&
+            // Staff cannot change notifications (reserved for service account)
+            request.resource.data.notifications == resource.data.notifications &&
             // Optional immutable fields (if they exist, they cannot be changed)
             (!resource.data.keys().hasAny(['customerPhone']) || request.resource.data.customerPhone == resource.data.customerPhone) &&
             (!resource.data.keys().hasAny(['customerCarPlate']) || request.resource.data.customerCarPlate == resource.data.customerCarPlate) &&
@@ -142,7 +175,7 @@ service cloud.firestore {
           // No deletes (preserve order history)
           allow delete: if false;
         }
-        
+
         // -------------------- ROLES --------------------
         match /roles/{userId} {
           // Individual document read: Staff can read their own, admins can read any
@@ -157,18 +190,36 @@ service cloud.firestore {
         }
 
         // -------------------- CONFIG (BRANDING & LOYALTY) --------------------
+        // Keep branding/loyalty public, BUT block public access to notifications config doc.
         match /config/{docId} {
-          // PUBLIC READ: Anyone can see branding & loyalty settings
-          allow read: if true;
-
-          // ADMIN WRITE: Only admins can update branding & loyalty
+          allow read: if docId != 'notifications';
           allow write: if isAdmin(merchantId, branchId);
+        }
+
+        // -------------------- CONFIG (WHATSAPP NOTIFICATIONS) --------------------
+        match /config/notifications {
+          // STAFF READ: Only staff can see WhatsApp notification config
+          allow read: if isStaff(merchantId, branchId);
+
+          // ADMIN CREATE/UPDATE: Only admins can configure WhatsApp notifications
+          allow create, update: if isAdmin(merchantId, branchId) &&
+            // whatsappEnabled must be boolean
+            request.resource.data.whatsappEnabled is bool &&
+            // If enabled, whatsappNumber must be valid E.164 format
+            (!request.resource.data.whatsappEnabled ||
+             (request.resource.data.whatsappNumber is string &&
+              request.resource.data.whatsappNumber.matches('^\\+[1-9]\\d{7,14}$'))) &&
+            // Audit fields required
+            request.resource.data.updatedAt == request.time &&
+            request.resource.data.updatedBy == request.auth.uid;
+
+          // No deletes (preserve notification history)
+          allow delete: if false;
         }
 
         // -------------------- CUSTOMERS (LOYALTY) --------------------
         match /customers/{phone} {
           // READ: Anyone signed in can read customer profiles (for points display)
-          // Staff can read all customer profiles
           allow read: if isSignedIn();
 
           // CREATE: Allow creating customer profiles during checkout
@@ -229,7 +280,7 @@ service cloud.firestore {
         }
       }
     }
-    
+
     // ==================== DENY ALL OTHERS ====================
     match /{document=**} {
       allow read, write: if false;

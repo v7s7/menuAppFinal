@@ -2,7 +2,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter_web_plugins/url_strategy.dart';
 
 // Firebase
@@ -172,15 +172,18 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
           // Play sound alert
           try {
             ref.read(soundAlertServiceProvider).playNewOrderAlert();
-            print('[MerchantShell] 🔔 Sound alert played for order: $orderId');
+            debugPrint('[MerchantShell] 🔔 Sound alert played for order: $orderId');
           } catch (e) {
-            print('[MerchantShell] ❌ Failed to play sound alert: $e');
+            debugPrint('[MerchantShell] ❌ Failed to play sound alert: $e');
           }
 
           // Clean up old processed alerts (keep last 100)
           if (_processedSoundAlerts.length > 100) {
             final toRemove = _processedSoundAlerts.length - 100;
-            _processedSoundAlerts.removeAll(_processedSoundAlerts.take(toRemove));
+            final itemsToRemove = _processedSoundAlerts.take(toRemove).toList();
+            for (final item in itemsToRemove) {
+              _processedSoundAlerts.remove(item);
+            }
           }
         }
       }
@@ -210,10 +213,10 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
         merchantName: merchantName,
       );
 
-      print('[MerchantShell] ✅ Email notifications ALWAYS active - sending to default email');
-      print('[MerchantShell] ✅ Cancelled order notifications ALWAYS active');
+      debugPrint('[MerchantShell] ✅ Email notifications ALWAYS active - sending to default email');
+      debugPrint('[MerchantShell] ✅ Cancelled order notifications ALWAYS active');
     } catch (e) {
-      print('[MerchantShell] ❌ Failed to start notifications: $e');
+      debugPrint('[MerchantShell] ❌ Failed to start notifications: $e');
     }
   }
 

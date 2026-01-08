@@ -1,4 +1,5 @@
 // lib/core/config/slug_routing.dart (COMPLETE FIX)
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' as rp;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'app_config.dart';
@@ -24,23 +25,23 @@ final slugLookupProvider = rp.FutureProvider<MerchantBranch?>((ref) async {
         .get();
     
     if (!snap.exists) {
-      print('❌ Slug "$slug" not found in Firestore');
+      debugPrint('❌ Slug "$slug" not found in Firestore');
       return null;
     }
 
     final data = snap.data()!;
     final m = (data['merchantId'] ?? '').toString().trim();
     final b = (data['branchId'] ?? '').toString().trim();
-    
+
     if (m.isEmpty || b.isEmpty) {
-      print('❌ Slug "$slug" has invalid data: $data');
+      debugPrint('❌ Slug "$slug" has invalid data: $data');
       return null;
     }
 
-    print('✅ Slug "$slug" resolved to m=$m b=$b');
+    debugPrint('✅ Slug "$slug" resolved to m=$m b=$b');
     return (merchantId: m, branchId: b);
   } catch (e) {
-    print('❌ Slug lookup error: $e');
+    debugPrint('❌ Slug lookup error: $e');
     return null;
   }
 });

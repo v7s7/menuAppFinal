@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'email_service.dart';
 import '../config/email_config.dart';
@@ -23,8 +24,8 @@ class CancelledOrderNotificationService {
     // Record when service starts - only listen for orders cancelled AFTER this time
     // This prevents sending emails for old cancelled orders
     _serviceStartTime = DateTime.now();
-    print('[CancelledOrderNotificationService] Started listening for cancelled orders after ${_serviceStartTime}');
-    print('[CancelledOrderNotificationService] All emails will be sent to: ${EmailConfig.defaultEmail}');
+    debugPrint('[CancelledOrderNotificationService] Started listening for cancelled orders after $_serviceStartTime');
+    debugPrint('[CancelledOrderNotificationService] All emails will be sent to: ${EmailConfig.defaultEmail}');
 
     _subscription = FirebaseFirestore.instance
         .collection('merchants/$merchantId/branches/$branchId/orders')
@@ -38,14 +39,14 @@ class CancelledOrderNotificationService {
 
           // Skip if already processed
           if (_processedOrders.contains(orderId)) {
-            print('[CancelledOrderNotificationService] Skipping already processed order: $orderId');
+            debugPrint('[CancelledOrderNotificationService] Skipping already processed order: $orderId');
             continue;
           }
 
           // Only process orders cancelled AFTER service started
           final cancelledAt = orderData['cancelledAt'] as Timestamp?;
           if (cancelledAt == null || cancelledAt.toDate().isBefore(_serviceStartTime!)) {
-            print('[CancelledOrderNotificationService] Skipping old cancelled order: $orderId');
+            debugPrint('[CancelledOrderNotificationService] Skipping old cancelled order: $orderId');
             continue;
           }
 
@@ -110,12 +111,12 @@ class CancelledOrderNotificationService {
       );
 
       if (result.success) {
-        print('[CancelledOrderNotificationService] ✅ Cancellation email sent for order $orderNo to ${EmailConfig.defaultEmail}: ${result.messageId}');
+        debugPrint('[CancelledOrderNotificationService] ✅ Cancellation email sent for order $orderNo to ${EmailConfig.defaultEmail}: ${result.messageId}');
       } else {
-        print('[CancelledOrderNotificationService] ❌ Failed to send cancellation email for order $orderNo: ${result.error}');
+        debugPrint('[CancelledOrderNotificationService] ❌ Failed to send cancellation email for order $orderNo: ${result.error}');
       }
     } catch (e) {
-      print('[CancelledOrderNotificationService] ❌ Exception sending cancellation notification: $e');
+      debugPrint('[CancelledOrderNotificationService] ❌ Exception sending cancellation notification: $e');
     }
   }
 
