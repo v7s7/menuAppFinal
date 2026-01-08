@@ -90,7 +90,12 @@ service cloud.firestore {
             request.resource.data.items.size() <= 50 &&
             request.resource.data.subtotal is number &&
             request.resource.data.subtotal >= 0 &&
-            request.resource.data.subtotal <= 1000;
+            request.resource.data.subtotal <= 1000 &&
+            // WhatsApp notification tracking: must be initialized on creation
+            request.resource.data.notifications is map &&
+            request.resource.data.notifications.keys().hasOnly(['waNewSent', 'waCancelSent']) &&
+            request.resource.data.notifications.waNewSent == false &&
+            request.resource.data.notifications.waCancelSent == false;
 
           // READ: Own orders or staff
           allow read: if isSignedIn() &&
@@ -158,11 +163,32 @@ service cloud.firestore {
 
         // -------------------- CONFIG (BRANDING & LOYALTY) --------------------
         match /config/{docId} {
-          // PUBLIC READ: Anyone can see branding & loyalty settings
-          allow read: if true;
+          // PUBLIC READ: Anyone can see branding & loyalty settings (except notifications)
+          allow read: if docId != 'notifications';
 
           // ADMIN WRITE: Only admins can update branding & loyalty
           allow write: if isAdmin(merchantId, branchId);
+        }
+
+        // -------------------- CONFIG (WHATSAPP NOTIFICATIONS) --------------------
+        match /config/notifications {
+          // STAFF READ: Only staff can see WhatsApp notification config
+          allow read: if isStaff(merchantId, branchId);
+
+          // ADMIN CREATE/UPDATE: Only admins can configure WhatsApp notifications
+          allow create, update: if isAdmin(merchantId, branchId) &&
+            // whatsappEnabled must be boolean
+            request.resource.data.whatsappEnabled is bool &&
+            // If enabled, whatsappNumber must be valid E.164 format
+            (!request.resource.data.whatsappEnabled ||
+             (request.resource.data.whatsappNumber is string &&
+              request.resource.data.whatsappNumber.matches('^\\+[1-9]\\d{7,14}$'))) &&
+            // Audit fields required
+            request.resource.data.updatedAt == request.time &&
+            request.resource.data.updatedBy == request.auth.uid;
+
+          // No deletes (preserve notification history)
+          allow delete: if false;
         }
 
         // -------------------- CUSTOMERS (LOYALTY) --------------------
