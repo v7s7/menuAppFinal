@@ -78,7 +78,7 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Please enter your complete address (Building, Road, Block)'),
+              content: Text('Please enter your complete address (Home, Road, Block, City)'),
               backgroundColor: Colors.orange,
             ),
           );
@@ -101,18 +101,21 @@ class _CartSheetState extends ConsumerState<CartSheet> {
           .toList();
 
       final cfg = ref.read(appConfigProvider);
-      final table = cfg.qr.table;
+      final qrTable = cfg.qr.table;
+      final manualTable = config.tableRequired ? _checkoutData.table : null;
+
+      // Effective table: QR takes precedence, otherwise use manual entry
+      final effectiveTable = (qrTable != null && qrTable.isNotEmpty) ? qrTable : manualTable;
 
       // Create order with configured fields
       final service = ref.read(orderServiceProvider);
       final order = await service.createOrder(
         items: items,
-        table: table,
+        table: effectiveTable,
         customerPhone: config.phoneRequired ? _checkoutData.phone : null,
         customerCarPlate: config.plateNumberRequired ? _checkoutData.carPlate : null,
         loyaltyDiscount: loyaltySettings.enabled ? _checkoutData.discount : null,
         loyaltyPointsUsed: loyaltySettings.enabled ? _checkoutData.pointsToUse : null,
-        tableNumber: config.tableRequired ? _checkoutData.table : null,
         customerAddress: config.addressRequired && _checkoutData.address != null
             ? _checkoutData.address!.toMap()
             : null,

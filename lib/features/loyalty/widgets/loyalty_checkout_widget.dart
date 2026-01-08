@@ -26,6 +26,7 @@ final checkoutTableProvider = StateProvider<String>((ref) => '');
 final checkoutAddressHomeProvider = StateProvider<String>((ref) => '');
 final checkoutAddressRoadProvider = StateProvider<String>((ref) => '');
 final checkoutAddressBlockProvider = StateProvider<String>((ref) => '');
+final checkoutAddressCityProvider = StateProvider<String>((ref) => '');
 final checkoutAddressFlatProvider = StateProvider<String>((ref) => '');
 final checkoutAddressNotesProvider = StateProvider<String>((ref) => '');
 
@@ -61,6 +62,7 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
   final _addressHomeController = TextEditingController();
   final _addressRoadController = TextEditingController();
   final _addressBlockController = TextEditingController();
+  final _addressCityController = TextEditingController();
   final _addressFlatController = TextEditingController();
   final _addressNotesController = TextEditingController();
 
@@ -73,6 +75,7 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
     _addressHomeController.dispose();
     _addressRoadController.dispose();
     _addressBlockController.dispose();
+    _addressCityController.dispose();
     _addressFlatController.dispose();
     _addressNotesController.dispose();
     super.dispose();
@@ -253,9 +256,9 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
           TextField(
             controller: _addressHomeController,
             decoration: const InputDecoration(
-              labelText: 'Building Number',
+              labelText: 'Home',
               hintText: 'e.g., 123',
-              prefixIcon: Icon(Icons.apartment),
+              prefixIcon: Icon(Icons.home),
               border: OutlineInputBorder(),
             ),
             onChanged: (value) {
@@ -288,6 +291,21 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
             ),
             onChanged: (value) {
               ref.read(checkoutAddressBlockProvider.notifier).state = value;
+              _updateCheckoutData(loyaltySettings, config);
+            },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _addressCityController,
+            decoration: const InputDecoration(
+              labelText: 'City',
+              hintText: 'e.g., Manama',
+              prefixIcon: Icon(Icons.location_city),
+              border: OutlineInputBorder(),
+            ),
+            textCapitalization: TextCapitalization.words,
+            onChanged: (value) {
+              ref.read(checkoutAddressCityProvider.notifier).state = value;
               _updateCheckoutData(loyaltySettings, config);
             },
           ),
@@ -639,14 +657,16 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
       final home = _addressHomeController.text.trim();
       final road = _addressRoadController.text.trim();
       final block = _addressBlockController.text.trim();
+      final city = _addressCityController.text.trim();
       final flat = _addressFlatController.text.trim();
       final notes = _addressNotesController.text.trim();
 
-      if (home.isNotEmpty && road.isNotEmpty && block.isNotEmpty) {
+      if (home.isNotEmpty && road.isNotEmpty && block.isNotEmpty && city.isNotEmpty) {
         address = BahrainAddress(
           home: home,
           road: road,
           block: block,
+          city: city,
           flat: flat.isEmpty ? null : flat,
           notes: notes.isEmpty ? null : notes,
         );

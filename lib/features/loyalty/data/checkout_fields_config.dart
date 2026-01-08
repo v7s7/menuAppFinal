@@ -1,5 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+// Export shared BahrainAddress model
+export '../../../core/models/bahrain_address.dart';
+
 /// Configuration for which fields are required at checkout
 class CheckoutFieldsConfig {
   final bool phoneRequired;
@@ -61,59 +64,5 @@ class CheckoutFieldsConfig {
       tableRequired: tableRequired ?? this.tableRequired,
       addressRequired: addressRequired ?? this.addressRequired,
     );
-  }
-}
-
-/// Bahrain home address model
-class BahrainAddress {
-  final String home; // Building number
-  final String road;
-  final String block;
-  final String? flat; // Optional
-  final String? notes; // Optional extra notes
-
-  const BahrainAddress({
-    required this.home,
-    required this.road,
-    required this.block,
-    this.flat,
-    this.notes,
-  });
-
-  Map<String, dynamic> toMap() {
-    return {
-      'home': home,
-      'road': road,
-      'block': block,
-      if (flat != null && flat!.isNotEmpty) 'flat': flat,
-      if (notes != null && notes!.isNotEmpty) 'notes': notes,
-    };
-  }
-
-  factory BahrainAddress.fromMap(Map<String, dynamic> map) {
-    return BahrainAddress(
-      home: map['home'] ?? '',
-      road: map['road'] ?? '',
-      block: map['block'] ?? '',
-      flat: map['flat'],
-      notes: map['notes'],
-    );
-  }
-
-  bool get isValid {
-    return home.trim().isNotEmpty &&
-        road.trim().isNotEmpty &&
-        block.trim().isNotEmpty;
-  }
-
-  @override
-  String toString() {
-    final parts = <String>[
-      if (flat != null && flat!.isNotEmpty) 'Flat $flat,',
-      'Building $home,',
-      'Road $road,',
-      'Block $block',
-    ];
-    return parts.join(' ');
   }
 }

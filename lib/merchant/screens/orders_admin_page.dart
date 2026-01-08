@@ -88,7 +88,6 @@ class _AdminOrder {
   final int? loyaltyPointsUsed;
 
   // NEW: Additional checkout fields
-  final String? table;
   final String? customerAddress; // Stored as string representation
 
   // Cancellation
@@ -106,7 +105,6 @@ class _AdminOrder {
     this.customerCarPlate,
     this.loyaltyDiscount,
     this.loyaltyPointsUsed,
-    this.table,
     this.customerAddress,
     this.cancellationReason,
   });
@@ -194,7 +192,6 @@ final ordersStreamProvider =
         customerCarPlate: (data['customerCarPlate'] as String?)?.trim(),
         loyaltyDiscount: loyaltyDiscount,
         loyaltyPointsUsed: loyaltyPointsUsed,
-        table: (data['table'] as String?)?.trim(),
         customerAddress: (data['customerAddress'] is Map)
             ? _formatAddress(data['customerAddress'] as Map<String, dynamic>)
             : null,
@@ -211,6 +208,7 @@ String? _formatAddress(Map<String, dynamic> addressMap) {
     final home = addressMap['home'] as String?;
     final road = addressMap['road'] as String?;
     final block = addressMap['block'] as String?;
+    final city = addressMap['city'] as String?;
     final flat = addressMap['flat'] as String?;
     final notes = addressMap['notes'] as String?;
 
@@ -218,9 +216,10 @@ String? _formatAddress(Map<String, dynamic> addressMap) {
 
     final parts = <String>[];
     if (flat != null && flat.isNotEmpty) parts.add('Flat $flat,');
-    parts.add('Building $home,');
+    parts.add('Home $home,');
     parts.add('Road $road,');
     parts.add('Block $block');
+    if (city != null && city.isNotEmpty) parts.add('$city');
 
     if (notes != null && notes.isNotEmpty) {
       parts.add('($notes)');
@@ -733,23 +732,6 @@ class _OrderTile extends ConsumerWidget {
                               ),
                             ],
                           ),
-                        if (o.table != null && o.table!.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Icon(Icons.table_bar, size: 16, color: onSurface.withOpacity(0.6)),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Table ${o.table}',
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                        // NEW: Table Number (checkout field)
                         if (o.table != null && o.table!.isNotEmpty) ...[
                           const SizedBox(height: 6),
                           Row(

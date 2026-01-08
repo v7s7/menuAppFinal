@@ -56,14 +56,15 @@ service cloud.firestore {
         (!config.plateNumberRequired || (orderData.keys().hasAny(['customerCarPlate']) && orderData.customerCarPlate is string && orderData.customerCarPlate.size() > 0)) &&
         // If table required, must be present
         (!config.tableRequired || (orderData.keys().hasAny(['table']) && orderData.table is string && orderData.table.size() > 0)) &&
-        // If address required, must be present with required fields
+        // If address required, must be present with required fields (home, road, block, city)
         (!config.addressRequired || (
           orderData.keys().hasAny(['customerAddress']) &&
           orderData.customerAddress is map &&
-          orderData.customerAddress.keys().hasAny(['home', 'road', 'block']) &&
+          orderData.customerAddress.keys().hasAny(['home', 'road', 'block', 'city']) &&
           orderData.customerAddress.home is string && orderData.customerAddress.home.size() > 0 &&
           orderData.customerAddress.road is string && orderData.customerAddress.road.size() > 0 &&
-          orderData.customerAddress.block is string && orderData.customerAddress.block.size() > 0
+          orderData.customerAddress.block is string && orderData.customerAddress.block.size() > 0 &&
+          orderData.customerAddress.city is string && orderData.customerAddress.city.size() > 0
         ))
       );
     }
