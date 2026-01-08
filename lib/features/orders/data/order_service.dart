@@ -10,6 +10,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../core/config/slug_routing.dart';
+import '../../../core/models/bahrain_address.dart';
 
 typedef Json = Map<String, dynamic>;
 
@@ -138,7 +139,7 @@ class OrderService {
       customerCarPlate: customerCarPlate,
       loyaltyDiscount: loyaltyDiscount,
       loyaltyPointsUsed: loyaltyPointsUsed,
-      customerAddress: customerAddress != null ? om.BahrainAddress.fromMap(customerAddress) : null,
+      customerAddress: customerAddress != null ? BahrainAddress.fromMap(customerAddress) : null,
     );
     } catch (e, st) {
       if (kDebugMode) {
@@ -171,10 +172,10 @@ class OrderService {
               0.0, (s, it) => s + (it.price * it.qty.toDouble()));
 
       // Parse address if present
-      om.BahrainAddress? address;
+      BahrainAddress? address;
       if (data['customerAddress'] != null && data['customerAddress'] is Map) {
         try {
-          address = om.BahrainAddress.fromMap(_safeJson(data['customerAddress']));
+          address = BahrainAddress.fromMap(_safeJson(data['customerAddress']));
         } catch (_) {
           address = null;
         }
