@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../core/branding/branding_providers.dart';
-import '../../core/config/email_config.dart';
 import '../../core/services/role_service.dart';
 import '../../core/widgets/permission_gate.dart';
 import 'user_management_page.dart';
@@ -16,8 +16,8 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
-  final _emailController = TextEditingController();
-  bool _emailNotificationsEnabled = false;
+  final _whatsappNumberController = TextEditingController();
+  bool _whatsappEnabled = false;
   bool _isLoading = true;
   bool _isSaving = false;
   String? _errorMessage;
@@ -31,7 +31,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   @override
   void dispose() {
-    _emailController.dispose();
+    _whatsappNumberController.dispose();
     super.dispose();
   }
 
@@ -45,18 +45,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       final merchantId = ref.read(merchantIdProvider);
       final branchId = ref.read(branchIdProvider);
 
-      final settingsDoc = await FirebaseFirestore.instance
-          .doc('merchants/$merchantId/branches/$branchId/config/settings')
+      final notificationsDoc = await FirebaseFirestore.instance
+          .doc('merchants/$merchantId/branches/$branchId/config/notifications')
           .get();
 
       if (mounted) {
         setState(() {
-          if (settingsDoc.exists) {
-            final data = settingsDoc.data();
-            _emailNotificationsEnabled =
-                data?['emailNotifications']?['enabled'] ?? false;
-            _emailController.text =
-                data?['emailNotifications']?['email'] ?? '';
+          if (notificationsDoc.exists) {
+            final data = notificationsDoc.data();
+            _whatsappEnabled = data?['whatsappEnabled'] ?? false;
+            _whatsappNumberController.text = data?['whatsappNumber'] ?? '';
           }
           _isLoading = false;
         });
@@ -71,6 +69,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
+  bool _validateE164(String number) {
+    // E.164 format: +[1-9][0-9]{7,14}
+    final regex = RegExp(r'^\+[1-9]\d{7,14}$');
+    return regex.hasMatch(number);
+  }
+
   Future<void> _saveSettings() async {
     setState(() {
       _isSaving = true;
@@ -81,20 +85,35 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     try {
       final merchantId = ref.read(merchantIdProvider);
       final branchId = ref.read(branchIdProvider);
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+
+      if (uid == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Validate WhatsApp number if enabled
+      final whatsappNumber = _whatsappNumberController.text.trim();
+      if (_whatsappEnabled && !_validateE164(whatsappNumber)) {
+        setState(() {
+          _errorMessage =
+              'Invalid WhatsApp number. Use E.164 format (e.g., +973XXXXXXXX)';
+          _isSaving = false;
+        });
+        return;
+      }
 
       await FirebaseFirestore.instance
-          .doc('merchants/$merchantId/branches/$branchId/config/settings')
+          .doc('merchants/$merchantId/branches/$branchId/config/notifications')
           .set({
-        'emailNotifications': {
-          'enabled': _emailNotificationsEnabled,
-          'email': _emailController.text.trim(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-      }, SetOptions(merge: true));
+        'whatsappEnabled': _whatsappEnabled,
+        'whatsappNumber': _whatsappEnabled ? whatsappNumber : '',
+        'updatedAt': FieldValue.serverTimestamp(),
+        'updatedBy': uid,
+      });
 
       if (mounted) {
         setState(() {
-          _successMessage = 'Settings saved successfully!';
+          _successMessage = 'WhatsApp notification settings saved successfully!';
           _isSaving = false;
         });
 
@@ -161,84 +180,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Email Service Configuration Warning
-                if (!EmailConfig.isConfigured)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
-                      border: Border.all(color: Colors.orange.shade200),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.warning_amber_rounded,
-                                color: Colors.orange.shade700, size: 24),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                'Email Service Not Configured',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  color: Colors.orange.shade900,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'To enable email notifications, you need to:',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: Colors.orange.shade900,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Padding(
-                          padding: const EdgeInsets.only(left: 16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '1. Deploy the Cloudflare Worker from /cloudflare-worker/',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: Colors.orange.shade800,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '2. Set RESEND_API_KEY environment variable',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: Colors.orange.shade800,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '3. Update workerUrl in lib/core/config/email_config.dart',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: Colors.orange.shade800,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'See cloudflare-worker/README.md for detailed instructions.',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.orange.shade700,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                // Email Notifications Section
+                // WhatsApp Notifications Section
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -248,12 +190,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         Row(
                           children: [
                             Icon(
-                              Icons.email_outlined,
+                              Icons.chat_bubble_outline,
                               color: theme.colorScheme.primary,
+                              size: 28,
                             ),
                             const SizedBox(width: 12),
                             Text(
-                              'Email Notifications',
+                              'WhatsApp Notifications',
                               style: theme.textTheme.titleLarge?.copyWith(
                                 fontWeight: FontWeight.bold,
                               ),
@@ -262,7 +205,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Receive email notifications when new orders are placed',
+                          'Receive WhatsApp messages for new orders and cancellations',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -271,24 +214,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
                         // Enable/Disable toggle
                         SwitchListTile(
-                          value: _emailNotificationsEnabled,
-                          onChanged: EmailConfig.isConfigured
-                              ? (value) {
-                                  setState(() {
-                                    _emailNotificationsEnabled = value;
-                                  });
-                                }
-                              : null,
-                          title: const Text('Enable Email Notifications'),
+                          value: _whatsappEnabled,
+                          onChanged: (value) {
+                            setState(() {
+                              _whatsappEnabled = value;
+                            });
+                          },
+                          title: const Text('Enable WhatsApp Notifications'),
                           subtitle: Text(
-                            !EmailConfig.isConfigured
-                                ? 'Email service must be configured first'
-                                : (_emailNotificationsEnabled
-                                    ? 'You will receive emails for new orders'
-                                    : 'Email notifications are disabled'),
+                            _whatsappEnabled
+                                ? 'You will receive WhatsApp messages for orders'
+                                : 'WhatsApp notifications are disabled',
                           ),
                           secondary: Icon(
-                            _emailNotificationsEnabled
+                            _whatsappEnabled
                                 ? Icons.notifications_active
                                 : Icons.notifications_off,
                           ),
@@ -296,19 +235,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
                         const SizedBox(height: 16),
 
-                        // Email input
+                        // WhatsApp number input
                         TextField(
-                          controller: _emailController,
+                          controller: _whatsappNumberController,
                           decoration: InputDecoration(
-                            labelText: 'Email Address',
-                            hintText: 'merchant@example.com',
-                            prefixIcon: const Icon(Icons.email),
+                            labelText: 'WhatsApp Number',
+                            hintText: '+973XXXXXXXX',
+                            prefixIcon: const Icon(Icons.phone),
                             border: const OutlineInputBorder(),
                             helperText:
-                                'Order notifications and reports will be sent to this email',
-                            enabled: EmailConfig.isConfigured && _emailNotificationsEnabled,
+                                'E.164 format with country code (e.g., +973 for Bahrain)',
+                            enabled: _whatsappEnabled,
                           ),
-                          keyboardType: TextInputType.emailAddress,
+                          keyboardType: TextInputType.phone,
                         ),
 
                         const SizedBox(height: 24),
@@ -346,12 +285,43 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      '• Instant notifications when new orders arrive\n'
-                                      '• Order details including items and notes\n'
-                                      '• Complete audit trail of all orders',
+                                      '• Instant WhatsApp messages when new orders arrive\n'
+                                      '• Notifications when orders are cancelled\n'
+                                      '• Order details including items, table, and customer info',
                                       style: theme.textTheme.bodySmall,
                                     ),
                                   ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Note about Twilio configuration
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            border: Border.all(color: Colors.blue.shade200),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.cloud_outlined,
+                                size: 20,
+                                color: Colors.blue.shade700,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'Messages are sent via Cloudflare Worker using Twilio WhatsApp API. Configure your Worker with Twilio credentials to enable sending.',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: Colors.blue.shade900,
+                                  ),
                                 ),
                               ),
                             ],
