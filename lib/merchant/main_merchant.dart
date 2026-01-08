@@ -15,8 +15,9 @@ import '../firebase_options.dart';
 import '../core/config/app_config.dart';
 import '../core/config/slug_routing.dart';
 import '../core/branding/branding_providers.dart';
-import '../core/services/order_notification_service.dart';
-import '../core/services/cancelled_order_notification_service.dart';
+// Email notification services disabled - WhatsApp notifications handled by Cloudflare Worker
+// import '../core/services/order_notification_service.dart';
+// import '../core/services/cancelled_order_notification_service.dart';
 import '../core/services/role_service.dart';
 import '../features/orders/services/sound_alert_service.dart';
 
@@ -127,8 +128,9 @@ class _MerchantShell extends ConsumerStatefulWidget {
 
 class _MerchantShellState extends ConsumerState<_MerchantShell> {
   int _i = 0;
-  final _notificationService = OrderNotificationService();
-  final _cancelledOrderService = CancelledOrderNotificationService();
+  // Email notification services disabled - WhatsApp notifications handled by Cloudflare Worker
+  // final _notificationService = OrderNotificationService();
+  // final _cancelledOrderService = CancelledOrderNotificationService();
   StreamSubscription<DocumentSnapshot>? _settingsSubscription;
   StreamSubscription<QuerySnapshot>? _soundAlertSubscription;
   final Set<String> _processedSoundAlerts = {};
@@ -136,14 +138,16 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
   @override
   void initState() {
     super.initState();
-    _watchSettingsAndStartNotifications();
+    // Email notifications disabled - WhatsApp handled by Worker
+    // _watchSettingsAndStartNotifications();
     _startSoundAlerts();
   }
 
   @override
   void dispose() {
-    _notificationService.stopListening();
-    _cancelledOrderService.stopListening();
+    // Email notification services disabled
+    // _notificationService.stopListening();
+    // _cancelledOrderService.stopListening();
     _settingsSubscription?.cancel();
     _soundAlertSubscription?.cancel();
     super.dispose();
@@ -190,35 +194,35 @@ class _MerchantShellState extends ConsumerState<_MerchantShell> {
     });
   }
 
-  /// Start email notification services (ALWAYS active)
-  void _watchSettingsAndStartNotifications() async {
-    try {
-      // Load merchant name
-      final brandingDoc = await FirebaseFirestore.instance
-          .doc('merchants/${widget.merchantId}/branches/${widget.branchId}/config/branding')
-          .get();
-      final merchantName = brandingDoc.data()?['title'] as String? ?? 'Your Store';
-
-      // Start listening for new orders - ALWAYS active, sends to default email
-      _notificationService.startListening(
-        merchantId: widget.merchantId,
-        branchId: widget.branchId,
-        merchantName: merchantName,
-      );
-
-      // Start listening for cancelled orders - ALWAYS active, sends to default email
-      _cancelledOrderService.startListening(
-        merchantId: widget.merchantId,
-        branchId: widget.branchId,
-        merchantName: merchantName,
-      );
-
-      debugPrint('[MerchantShell] ✅ Email notifications ALWAYS active - sending to default email');
-      debugPrint('[MerchantShell] ✅ Cancelled order notifications ALWAYS active');
-    } catch (e) {
-      debugPrint('[MerchantShell] ❌ Failed to start notifications: $e');
-    }
-  }
+  /// Email notification services disabled - WhatsApp notifications handled by Cloudflare Worker
+  // void _watchSettingsAndStartNotifications() async {
+  //   try {
+  //     // Load merchant name
+  //     final brandingDoc = await FirebaseFirestore.instance
+  //         .doc('merchants/${widget.merchantId}/branches/${widget.branchId}/config/branding')
+  //         .get();
+  //     final merchantName = brandingDoc.data()?['title'] as String? ?? 'Your Store';
+  //
+  //     // Start listening for new orders - ALWAYS active, sends to default email
+  //     _notificationService.startListening(
+  //       merchantId: widget.merchantId,
+  //       branchId: widget.branchId,
+  //       merchantName: merchantName,
+  //     );
+  //
+  //     // Start listening for cancelled orders - ALWAYS active, sends to default email
+  //     _cancelledOrderService.startListening(
+  //       merchantId: widget.merchantId,
+  //       branchId: widget.branchId,
+  //       merchantName: merchantName,
+  //     );
+  //
+  //     debugPrint('[MerchantShell] ✅ Email notifications ALWAYS active - sending to default email');
+  //     debugPrint('[MerchantShell] ✅ Cancelled order notifications ALWAYS active');
+  //   } catch (e) {
+  //     debugPrint('[MerchantShell] ❌ Failed to start notifications: $e');
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
