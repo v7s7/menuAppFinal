@@ -16,6 +16,7 @@ import '../../../core/config/app_config.dart';
 import '../../loyalty/data/loyalty_models.dart';
 import '../../loyalty/data/loyalty_service.dart';
 import '../../loyalty/widgets/loyalty_checkout_widget.dart';
+import '../../loyalty/data/checkout_fields_service.dart';
 
 class CartSheet extends ConsumerStatefulWidget {
   final VoidCallback? onConfirm;
@@ -35,8 +36,12 @@ class _CartSheetState extends ConsumerState<CartSheet> {
 
   Future<void> _confirmOrder(BuildContext context, List<CartLine> lines, double subtotal) async {
     try {
-      // ALWAYS validate phone number and car plate (for car identification)
-      if (_checkoutData.phone.isEmpty) {
+      // Get checkout fields configuration
+      final checkoutFieldsService = ref.read(checkoutFieldsServiceProvider);
+      final config = await checkoutFieldsService.getCheckoutFieldsConfig();
+
+      // Validate required fields based on configuration
+      if (config.phoneRequired && _checkoutData.phone.isEmpty) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -47,11 +52,33 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         }
         return;
       }
-      if (_checkoutData.carPlate.isEmpty) {
+      if (config.plateNumberRequired && _checkoutData.carPlate.isEmpty) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Please enter your car plate to continue'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+      if (config.tableNumberRequired && (_checkoutData.tableNumber == null || _checkoutData.tableNumber!.isEmpty)) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please enter your table number to continue'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+      if (config.addressRequired && (_checkoutData.address == null || !_checkoutData.address!.isValid)) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please enter your complete address (Building, Road, Block)'),
               backgroundColor: Colors.orange,
             ),
           );
@@ -76,15 +103,19 @@ class _CartSheetState extends ConsumerState<CartSheet> {
       final cfg = ref.read(appConfigProvider);
       final table = cfg.qr.table;
 
-      // Create order (ALWAYS include phone and car plate for identification)
+      // Create order with configured fields
       final service = ref.read(orderServiceProvider);
       final order = await service.createOrder(
         items: items,
         table: table,
-        customerPhone: _checkoutData.phone,
-        customerCarPlate: _checkoutData.carPlate,
+        customerPhone: config.phoneRequired ? _checkoutData.phone : null,
+        customerCarPlate: config.plateNumberRequired ? _checkoutData.carPlate : null,
         loyaltyDiscount: loyaltySettings.enabled ? _checkoutData.discount : null,
         loyaltyPointsUsed: loyaltySettings.enabled ? _checkoutData.pointsToUse : null,
+        tableNumber: config.tableNumberRequired ? _checkoutData.tableNumber : null,
+        customerAddress: config.addressRequired && _checkoutData.address != null
+            ? _checkoutData.address!.toMap()
+            : null,
       );
 
       // Redeem points (if using points for discount)
@@ -204,10 +235,23 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         final subtotal = lines.fold<double>(0.0, (sum, l) => sum + l.lineTotal);
         final onSurface = Theme.of(context).colorScheme.onSurface;
 
-        // Check if all required fields are filled
-        final isReadyToConfirm = _checkoutData.phone.isNotEmpty &&
-                                 _checkoutData.carPlate.isNotEmpty &&
-                                 lines.isNotEmpty;
+        // Check if at least cart has items (detailed validation happens in _confirmOrder)
+        // We do basic check here to enable/disable button
+        final configAsync = ref.watch(checkoutFieldsConfigProvider);
+        final hasMinimumInfo = configAsync.when(
+          data: (config) {
+            // Check if at least required fields are not empty
+            if (config.phoneRequired && _checkoutData.phone.isEmpty) return false;
+            if (config.plateNumberRequired && _checkoutData.carPlate.isEmpty) return false;
+            if (config.tableNumberRequired && (_checkoutData.tableNumber == null || _checkoutData.tableNumber!.isEmpty)) return false;
+            if (config.addressRequired && (_checkoutData.address == null || !_checkoutData.address!.isValid)) return false;
+            return true;
+          },
+          loading: () => false,
+          error: (_, __) => _checkoutData.phone.isNotEmpty && _checkoutData.carPlate.isNotEmpty, // Fallback to old behavior
+        );
+
+        final isReadyToConfirm = hasMinimumInfo && lines.isNotEmpty;
 
         // Dynamic button style - green when ready, gray when not
         final ButtonStyle _confirmStyle = isReadyToConfirm

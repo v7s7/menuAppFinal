@@ -7,6 +7,8 @@ import '../../core/branding/branding_providers.dart';
 import '../../core/services/role_service.dart';
 import '../../core/widgets/permission_gate.dart';
 import 'user_management_page.dart';
+import '../../features/loyalty/data/checkout_fields_config.dart';
+import '../../features/loyalty/data/checkout_fields_service.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -22,6 +24,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _isSaving = false;
   String? _errorMessage;
   String? _successMessage;
+
+  // Checkout fields configuration
+  bool _phoneRequired = true;
+  bool _plateNumberRequired = true;
+  bool _tableNumberRequired = false;
+  bool _addressRequired = false;
 
   @override
   void initState() {
@@ -45,9 +53,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       final merchantId = ref.read(merchantIdProvider);
       final branchId = ref.read(branchIdProvider);
 
+      // Load WhatsApp notification settings
       final notificationsDoc = await FirebaseFirestore.instance
           .doc('merchants/$merchantId/branches/$branchId/config/notifications')
           .get();
+
+      // Load checkout fields configuration
+      final checkoutFieldsService = ref.read(checkoutFieldsServiceProvider);
+      final checkoutFieldsConfig = await checkoutFieldsService.getCheckoutFieldsConfig();
 
       if (mounted) {
         setState(() {
@@ -56,6 +69,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             _whatsappEnabled = data?['whatsappEnabled'] ?? false;
             _whatsappNumberController.text = data?['whatsappNumber'] ?? '';
           }
+          // Set checkout fields config
+          _phoneRequired = checkoutFieldsConfig.phoneRequired;
+          _plateNumberRequired = checkoutFieldsConfig.plateNumberRequired;
+          _tableNumberRequired = checkoutFieldsConfig.tableNumberRequired;
+          _addressRequired = checkoutFieldsConfig.addressRequired;
           _isLoading = false;
         });
       }
@@ -102,6 +120,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         return;
       }
 
+      // Validate that at least one identification field is required
+      if (!_phoneRequired && !_plateNumberRequired && !_tableNumberRequired) {
+        setState(() {
+          _errorMessage = 'At least one identification field (Phone, Plate, or Table) must be required';
+          _isSaving = false;
+        });
+        return;
+      }
+
+      // Save WhatsApp notification settings
       await FirebaseFirestore.instance
           .doc('merchants/$merchantId/branches/$branchId/config/notifications')
           .set({
@@ -111,9 +139,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         'updatedBy': uid,
       });
 
+      // Save checkout fields configuration
+      final checkoutFieldsService = ref.read(checkoutFieldsServiceProvider);
+      final checkoutFieldsConfig = CheckoutFieldsConfig(
+        phoneRequired: _phoneRequired,
+        plateNumberRequired: _plateNumberRequired,
+        tableNumberRequired: _tableNumberRequired,
+        addressRequired: _addressRequired,
+      );
+      await checkoutFieldsService.updateCheckoutFieldsConfig(checkoutFieldsConfig);
+
       if (mounted) {
         setState(() {
-          _successMessage = 'WhatsApp notification settings saved successfully!';
+          _successMessage = 'Settings saved successfully!';
           _isSaving = false;
         });
 
@@ -322,6 +360,127 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     color: Colors.blue.shade900,
                                   ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Checkout Fields Configuration Section
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.checklist,
+                              color: theme.colorScheme.primary,
+                              size: 28,
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'Checkout Fields',
+                              style: theme.textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Configure which fields customers must provide at checkout',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const Divider(height: 32),
+
+                        // Phone Number toggle
+                        SwitchListTile(
+                          value: _phoneRequired,
+                          onChanged: (value) {
+                            setState(() {
+                              _phoneRequired = value;
+                            });
+                          },
+                          title: const Text('Phone Number'),
+                          subtitle: const Text('Required for loyalty and contact'),
+                          secondary: const Icon(Icons.phone),
+                        ),
+
+                        // Car Plate toggle
+                        SwitchListTile(
+                          value: _plateNumberRequired,
+                          onChanged: (value) {
+                            setState(() {
+                              _plateNumberRequired = value;
+                            });
+                          },
+                          title: const Text('Car Plate Number'),
+                          subtitle: const Text('Required for drive-through/pickup identification'),
+                          secondary: const Icon(Icons.directions_car),
+                        ),
+
+                        // Table Number toggle
+                        SwitchListTile(
+                          value: _tableNumberRequired,
+                          onChanged: (value) {
+                            setState(() {
+                              _tableNumberRequired = value;
+                            });
+                          },
+                          title: const Text('Table Number'),
+                          subtitle: const Text('Required for dine-in service'),
+                          secondary: const Icon(Icons.table_restaurant),
+                        ),
+
+                        // Address toggle
+                        SwitchListTile(
+                          value: _addressRequired,
+                          onChanged: (value) {
+                            setState(() {
+                              _addressRequired = value;
+                            });
+                          },
+                          title: const Text('Delivery Address'),
+                          subtitle: const Text('Required for home delivery (Bahrain format)'),
+                          secondary: const Icon(Icons.home),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Info box
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: theme.colorScheme.primary.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                size: 20,
+                                color: theme.colorScheme.primary,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'At least one of Phone, Plate, or Table must be required for customer identification. Changes apply immediately to new orders.',
+                                  style: theme.textTheme.bodySmall,
                                 ),
                               ),
                             ],

@@ -147,6 +147,9 @@ service cloud.firestore {
             (!resource.data.keys().hasAny(['table']) || request.resource.data.table == resource.data.table) &&
             (!resource.data.keys().hasAny(['loyaltyDiscount']) || request.resource.data.loyaltyDiscount == resource.data.loyaltyDiscount) &&
             (!resource.data.keys().hasAny(['loyaltyPointsUsed']) || request.resource.data.loyaltyPointsUsed == resource.data.loyaltyPointsUsed) &&
+            // NEW: Additional checkout fields (immutable if present)
+            (!resource.data.keys().hasAny(['tableNumber']) || request.resource.data.tableNumber == resource.data.tableNumber) &&
+            (!resource.data.keys().hasAny(['customerAddress']) || request.resource.data.customerAddress == resource.data.customerAddress) &&
             // Status field: Must be valid order status
             request.resource.data.status in ['pending', 'accepted', 'preparing', 'ready', 'served', 'cancelled'] &&
             // Valid status transitions (prevent invalid workflows)
@@ -189,8 +192,8 @@ service cloud.firestore {
           allow write: if isAdmin(merchantId, branchId);
         }
 
-        // -------------------- CONFIG (BRANDING & LOYALTY) --------------------
-        // Keep branding/loyalty public, BUT block public access to notifications config doc.
+        // -------------------- CONFIG (BRANDING & LOYALTY & CHECKOUT FIELDS) --------------------
+        // Keep branding/loyalty/checkoutFields public, BUT block public access to notifications config doc.
         match /config/{docId} {
           allow read: if docId != 'notifications';
           allow write: if isAdmin(merchantId, branchId);

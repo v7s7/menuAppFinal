@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'checkout_fields_config.dart';
 
 /// Customer profile with loyalty points
 class CustomerProfile {
@@ -210,11 +211,17 @@ class CheckoutData {
   final int pointsToUse; // Points customer wants to redeem
   final double discount; // Calculated discount from points
 
+  // NEW: Additional checkout fields
+  final String? tableNumber; // Table number for dine-in
+  final BahrainAddress? address; // Home address for delivery
+
   const CheckoutData({
     required this.phone,
     required this.carPlate,
     required this.pointsToUse,
     required this.discount,
+    this.tableNumber,
+    this.address,
   });
 
   CheckoutData copyWith({
@@ -222,12 +229,16 @@ class CheckoutData {
     String? carPlate,
     int? pointsToUse,
     double? discount,
+    String? tableNumber,
+    BahrainAddress? address,
   }) {
     return CheckoutData(
       phone: phone ?? this.phone,
       carPlate: carPlate ?? this.carPlate,
       pointsToUse: pointsToUse ?? this.pointsToUse,
       discount: discount ?? this.discount,
+      tableNumber: tableNumber ?? this.tableNumber,
+      address: address ?? this.address,
     );
   }
 }

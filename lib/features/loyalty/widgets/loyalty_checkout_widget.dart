@@ -7,6 +7,8 @@ import 'package:intl_phone_field/phone_number.dart';
 
 import '../data/loyalty_models.dart';
 import '../data/loyalty_service.dart';
+import '../data/checkout_fields_config.dart';
+import '../data/checkout_fields_service.dart';
 
 /// State provider for customer phone number during checkout
 final checkoutPhoneProvider = StateProvider<String>((ref) => '');
@@ -16,6 +18,16 @@ final checkoutCarPlateProvider = StateProvider<String>((ref) => '');
 
 /// State provider for points to use
 final checkoutPointsToUseProvider = StateProvider<int>((ref) => 0);
+
+/// State provider for table number
+final checkoutTableNumberProvider = StateProvider<String>((ref) => '');
+
+/// State providers for address fields
+final checkoutAddressHomeProvider = StateProvider<String>((ref) => '');
+final checkoutAddressRoadProvider = StateProvider<String>((ref) => '');
+final checkoutAddressBlockProvider = StateProvider<String>((ref) => '');
+final checkoutAddressFlatProvider = StateProvider<String>((ref) => '');
+final checkoutAddressNotesProvider = StateProvider<String>((ref) => '');
 
 /// Widget for loyalty checkout (phone, car plate, points)
 class LoyaltyCheckoutWidget extends ConsumerStatefulWidget {
@@ -43,12 +55,26 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
   final _phoneNumberController = TextEditingController();
   final _carPlateController = TextEditingController();
   final _pointsController = TextEditingController(text: '0');
+  final _tableNumberController = TextEditingController();
+
+  // Address controllers
+  final _addressHomeController = TextEditingController();
+  final _addressRoadController = TextEditingController();
+  final _addressBlockController = TextEditingController();
+  final _addressFlatController = TextEditingController();
+  final _addressNotesController = TextEditingController();
 
   @override
   void dispose() {
     _phoneNumberController.dispose();
     _carPlateController.dispose();
     _pointsController.dispose();
+    _tableNumberController.dispose();
+    _addressHomeController.dispose();
+    _addressRoadController.dispose();
+    _addressBlockController.dispose();
+    _addressFlatController.dispose();
+    _addressNotesController.dispose();
     super.dispose();
   }
 
@@ -65,117 +91,243 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final settingsAsync = ref.watch(loyaltySettingsProvider);
+    final loyaltySettingsAsync = ref.watch(loyaltySettingsProvider);
+    final checkoutFieldsConfigAsync = ref.watch(checkoutFieldsConfigProvider);
 
-    return settingsAsync.when(
+    return loyaltySettingsAsync.when(
       loading: () => const SizedBox(),
       error: (e, st) => const SizedBox(),
-      data: (settings) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Divider(height: 32),
-            Row(
-              children: [
-                Icon(Icons.directions_car, color: settings.enabled ? Colors.purple : Colors.grey),
-                const SizedBox(width: 8),
-                Text(
-                  settings.enabled ? 'Customer Info & Loyalty' : 'Customer Info',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Phone Number Input (WITH FLAG + COUNTRY PICKER)
-            IntlPhoneField(
-              controller: _phoneNumberController,
-              initialCountryCode: 'BH',
-              showCountryFlag: true,
-              showDropdownIcon: true,
-              dropdownIconPosition: IconPosition.trailing,
-              flagsButtonPadding: const EdgeInsets.only(left: 8, right: 8),
-              decoration: InputDecoration(
-                labelText: 'Phone Number',
-                hintText: '${'X' * _maxDigits}',
-                prefixIcon: const Icon(Icons.phone),
-                border: const OutlineInputBorder(),
-                helperText: '$_maxDigits digits',
-              ),
-              keyboardType: TextInputType.phone,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              autovalidateMode: AutovalidateMode.onUserInteraction,
-              validator: (PhoneNumber? phone) {
-                final digits = (phone?.number ?? '').replaceAll(RegExp(r'\D'), '');
-                final dial = phone?.countryCode ?? _selectedDialCode;
-                final max = _getMaxDigitsByDialCode(dial);
-                if (digits.isEmpty) return 'Phone is required';
-                if (digits.length != max) return 'Enter exactly $max digits';
-                return null;
-              },
-              onCountryChanged: (country) {
-                final dial = '+${country.dialCode}';
-                final max = _getMaxDigitsByDialCode(dial);
-
-                setState(() {
-                  _selectedDialCode = dial;
-                  _maxDigits = max;
-                });
-
-                // Rebuild E.164 from current typed digits
-                final digits = _phoneNumberController.text.replaceAll(RegExp(r'\D'), '');
-                _e164Phone = digits.isEmpty ? '' : '$_selectedDialCode$digits';
-
-                ref.read(checkoutPhoneProvider.notifier).state = _e164Phone;
-                _updateCheckoutData(settings);
-              },
-              onChanged: (phone) {
-                // phone.completeNumber usually gives E.164 like +973xxxxxxxx
-                // But we enforce digits-only and our maxDigits rule above.
-                final digits = phone.number.replaceAll(RegExp(r'\D'), '');
-                final dial = phone.countryCode;
-                final max = _getMaxDigitsByDialCode(dial);
-
-                setState(() {
-                  _selectedDialCode = dial;
-                  _maxDigits = max;
-                });
-
-                _e164Phone = digits.isEmpty ? '' : '$dial$digits';
-
-                ref.read(checkoutPhoneProvider.notifier).state = _e164Phone;
-                _updateCheckoutData(settings);
-              },
-            ),
-
-            const SizedBox(height: 12),
-
-            // Car Plate Input (Required)
-            TextField(
-              controller: _carPlateController,
-              decoration: const InputDecoration(
-                labelText: 'Car Plate',
-                hintText: 'e.g., 12345',
-                prefixIcon: Icon(Icons.directions_car),
-                border: OutlineInputBorder(),
-              ),
-              textCapitalization: TextCapitalization.characters,
-              maxLength: 7,
-              onChanged: (value) {
-                ref.read(checkoutCarPlateProvider.notifier).state = value;
-                _updateCheckoutData(settings);
-              },
-            ),
-
-            if (settings.enabled) ...[
-              const SizedBox(height: 16),
-              _buildCustomerProfileCard(settings),
-            ],
-          ],
+      data: (loyaltySettings) {
+        return checkoutFieldsConfigAsync.when(
+          loading: () => const SizedBox(),
+          error: (e, st) {
+            // If config fails to load, use defaults (phone + plate required)
+            return _buildFields(
+              loyaltySettings,
+              const CheckoutFieldsConfig(),
+            );
+          },
+          data: (config) => _buildFields(loyaltySettings, config),
         );
       },
+    );
+  }
+
+  Widget _buildFields(LoyaltySettings loyaltySettings, CheckoutFieldsConfig config) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 32),
+        Row(
+          children: [
+            Icon(Icons.directions_car, color: loyaltySettings.enabled ? Colors.purple : Colors.grey),
+            const SizedBox(width: 8),
+            Text(
+              loyaltySettings.enabled ? 'Customer Info & Loyalty' : 'Customer Info',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Phone Number Input (conditional)
+        if (config.phoneRequired) ...[
+          IntlPhoneField(
+            controller: _phoneNumberController,
+            initialCountryCode: 'BH',
+            showCountryFlag: true,
+            showDropdownIcon: true,
+            dropdownIconPosition: IconPosition.trailing,
+            flagsButtonPadding: const EdgeInsets.only(left: 8, right: 8),
+            decoration: InputDecoration(
+              labelText: 'Phone Number',
+              hintText: '${'X' * _maxDigits}',
+              prefixIcon: const Icon(Icons.phone),
+              border: const OutlineInputBorder(),
+              helperText: '$_maxDigits digits',
+            ),
+            keyboardType: TextInputType.phone,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            validator: (PhoneNumber? phone) {
+              final digits = (phone?.number ?? '').replaceAll(RegExp(r'\D'), '');
+              final dial = phone?.countryCode ?? _selectedDialCode;
+              final max = _getMaxDigitsByDialCode(dial);
+              if (digits.isEmpty) return 'Phone is required';
+              if (digits.length != max) return 'Enter exactly $max digits';
+              return null;
+            },
+            onCountryChanged: (country) {
+              final dial = '+${country.dialCode}';
+              final max = _getMaxDigitsByDialCode(dial);
+
+              setState(() {
+                _selectedDialCode = dial;
+                _maxDigits = max;
+              });
+
+              final digits = _phoneNumberController.text.replaceAll(RegExp(r'\D'), '');
+              _e164Phone = digits.isEmpty ? '' : '$_selectedDialCode$digits';
+
+              ref.read(checkoutPhoneProvider.notifier).state = _e164Phone;
+              _updateCheckoutData(loyaltySettings, config);
+            },
+            onChanged: (phone) {
+              final digits = phone.number.replaceAll(RegExp(r'\D'), '');
+              final dial = phone.countryCode;
+              final max = _getMaxDigitsByDialCode(dial);
+
+              setState(() {
+                _selectedDialCode = dial;
+                _maxDigits = max;
+              });
+
+              _e164Phone = digits.isEmpty ? '' : '$dial$digits';
+
+              ref.read(checkoutPhoneProvider.notifier).state = _e164Phone;
+              _updateCheckoutData(loyaltySettings, config);
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        // Car Plate Input (conditional)
+        if (config.plateNumberRequired) ...[
+          TextField(
+            controller: _carPlateController,
+            decoration: const InputDecoration(
+              labelText: 'Car Plate',
+              hintText: 'e.g., 12345',
+              prefixIcon: Icon(Icons.directions_car),
+              border: OutlineInputBorder(),
+            ),
+            textCapitalization: TextCapitalization.characters,
+            maxLength: 7,
+            onChanged: (value) {
+              ref.read(checkoutCarPlateProvider.notifier).state = value;
+              _updateCheckoutData(loyaltySettings, config);
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        // Table Number Input (conditional)
+        if (config.tableNumberRequired) ...[
+          TextField(
+            controller: _tableNumberController,
+            decoration: const InputDecoration(
+              labelText: 'Table Number',
+              hintText: 'e.g., 5',
+              prefixIcon: Icon(Icons.table_restaurant),
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            maxLength: 4,
+            onChanged: (value) {
+              ref.read(checkoutTableNumberProvider.notifier).state = value;
+              _updateCheckoutData(loyaltySettings, config);
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        // Address Fields (conditional)
+        if (config.addressRequired) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Icon(Icons.home, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Delivery Address (Bahrain)',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _addressHomeController,
+            decoration: const InputDecoration(
+              labelText: 'Building Number',
+              hintText: 'e.g., 123',
+              prefixIcon: Icon(Icons.apartment),
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (value) {
+              ref.read(checkoutAddressHomeProvider.notifier).state = value;
+              _updateCheckoutData(loyaltySettings, config);
+            },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _addressRoadController,
+            decoration: const InputDecoration(
+              labelText: 'Road',
+              hintText: 'e.g., 12',
+              prefixIcon: Icon(Icons.signpost),
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (value) {
+              ref.read(checkoutAddressRoadProvider.notifier).state = value;
+              _updateCheckoutData(loyaltySettings, config);
+            },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _addressBlockController,
+            decoration: const InputDecoration(
+              labelText: 'Block',
+              hintText: 'e.g., 345',
+              prefixIcon: Icon(Icons.grid_4x4),
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (value) {
+              ref.read(checkoutAddressBlockProvider.notifier).state = value;
+              _updateCheckoutData(loyaltySettings, config);
+            },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _addressFlatController,
+            decoration: const InputDecoration(
+              labelText: 'Flat / Unit (Optional)',
+              hintText: 'e.g., 2A',
+              prefixIcon: Icon(Icons.meeting_room),
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (value) {
+              ref.read(checkoutAddressFlatProvider.notifier).state = value;
+              _updateCheckoutData(loyaltySettings, config);
+            },
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _addressNotesController,
+            decoration: const InputDecoration(
+              labelText: 'Additional Notes (Optional)',
+              hintText: 'e.g., Near the park',
+              prefixIcon: Icon(Icons.notes),
+              border: OutlineInputBorder(),
+            ),
+            maxLines: 2,
+            onChanged: (value) {
+              ref.read(checkoutAddressNotesProvider.notifier).state = value;
+              _updateCheckoutData(loyaltySettings, config);
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        if (loyaltySettings.enabled && config.phoneRequired) ...[
+          const SizedBox(height: 4),
+          _buildCustomerProfileCard(loyaltySettings),
+        ],
+      ],
     );
   }
 
@@ -342,7 +494,7 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
                           final maxPoints = currentPoints.clamp(0, maxUsablePoints);
                           _pointsController.text = maxPoints.toString();
                           ref.read(checkoutPointsToUseProvider.notifier).state = maxPoints;
-                          _updateCheckoutData(settings);
+                          _updateCheckoutData(settings, const CheckoutFieldsConfig());
                         },
                         child: const Text('MAX'),
                       ),
@@ -362,7 +514,7 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
                       }
 
                       ref.read(checkoutPointsToUseProvider.notifier).state = validPoints;
-                      _updateCheckoutData(settings);
+                      _updateCheckoutData(settings, const CheckoutFieldsConfig());
                     },
                   ),
                   const SizedBox(height: 12),
@@ -473,17 +625,41 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
     );
   }
 
-  void _updateCheckoutData(LoyaltySettings settings) {
+  void _updateCheckoutData(LoyaltySettings settings, CheckoutFieldsConfig config) {
     final phone = _e164Phone.trim();
     final carPlate = _carPlateController.text.trim();
     final pointsToUse = int.tryParse(_pointsController.text) ?? 0;
     final discount = settings.calculateDiscount(pointsToUse);
+
+    final tableNumber = _tableNumberController.text.trim();
+
+    // Build address if required
+    BahrainAddress? address;
+    if (config.addressRequired) {
+      final home = _addressHomeController.text.trim();
+      final road = _addressRoadController.text.trim();
+      final block = _addressBlockController.text.trim();
+      final flat = _addressFlatController.text.trim();
+      final notes = _addressNotesController.text.trim();
+
+      if (home.isNotEmpty && road.isNotEmpty && block.isNotEmpty) {
+        address = BahrainAddress(
+          home: home,
+          road: road,
+          block: block,
+          flat: flat.isEmpty ? null : flat,
+          notes: notes.isEmpty ? null : notes,
+        );
+      }
+    }
 
     final checkoutData = CheckoutData(
       phone: phone,
       carPlate: carPlate,
       pointsToUse: pointsToUse,
       discount: discount,
+      tableNumber: tableNumber.isEmpty ? null : tableNumber,
+      address: address,
     );
 
     widget.onCheckoutDataChanged(checkoutData);

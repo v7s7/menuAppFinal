@@ -42,6 +42,8 @@ class OrderService {
     String? customerCarPlate,
     double? loyaltyDiscount,
     int? loyaltyPointsUsed,
+    String? tableNumber,
+    Map<String, dynamic>? customerAddress,
   }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
@@ -116,6 +118,9 @@ class OrderService {
         if (customerCarPlate != null) 'customerCarPlate': customerCarPlate,
         if (loyaltyDiscount != null) 'loyaltyDiscount': loyaltyDiscount,
         if (loyaltyPointsUsed != null) 'loyaltyPointsUsed': loyaltyPointsUsed,
+        // NEW: Additional checkout fields (optional)
+        if (tableNumber != null && tableNumber.trim().isNotEmpty) 'tableNumber': tableNumber.trim(),
+        if (customerAddress != null) 'customerAddress': customerAddress,
         // WhatsApp notification tracking flags
         'notifications': {
           'waNewSent': false,
@@ -135,6 +140,8 @@ class OrderService {
       customerCarPlate: customerCarPlate,
       loyaltyDiscount: loyaltyDiscount,
       loyaltyPointsUsed: loyaltyPointsUsed,
+      tableNumber: tableNumber,
+      customerAddress: customerAddress != null ? om.BahrainAddress.fromMap(customerAddress) : null,
     );
     } catch (e, st) {
       if (kDebugMode) {
@@ -166,6 +173,16 @@ class OrderService {
           : itemsList.fold<double>(
               0.0, (s, it) => s + (it.price * it.qty.toDouble()));
 
+      // Parse address if present
+      om.BahrainAddress? address;
+      if (data['customerAddress'] != null && data['customerAddress'] is Map) {
+        try {
+          address = om.BahrainAddress.fromMap(_safeJson(data['customerAddress']));
+        } catch (_) {
+          address = null;
+        }
+      }
+
       return om.Order(
         orderId: snap.id,
         orderNo: _asString(data['orderNo'], fallback: '—'),
@@ -178,6 +195,8 @@ class OrderService {
         customerCarPlate: _asNullableString(data['customerCarPlate']),
         loyaltyDiscount: data['loyaltyDiscount'] != null ? _asNum(data['loyaltyDiscount']).toDouble() : null,
         loyaltyPointsUsed: data['loyaltyPointsUsed'] != null ? _asNum(data['loyaltyPointsUsed']).toInt() : null,
+        tableNumber: _asNullableString(data['tableNumber']),
+        customerAddress: address,
         cancellationReason: _asNullableString(data['cancellationReason']),
       );
     });

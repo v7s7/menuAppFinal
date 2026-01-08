@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import '../../loyalty/data/checkout_fields_config.dart';
 
 enum OrderStatus { pending, accepted, preparing, ready, served, cancelled }
 
@@ -39,6 +40,10 @@ class Order {
   final double? loyaltyDiscount; // Discount from redeemed points
   final int? loyaltyPointsUsed; // Points redeemed for this order
 
+  // NEW: Additional checkout fields
+  final String? tableNumber; // Table number for dine-in
+  final BahrainAddress? customerAddress; // Home address for delivery
+
   // Cancellation
   final String? cancellationReason; // Reason for cancellation (optional)
 
@@ -54,6 +59,8 @@ class Order {
     this.customerCarPlate,
     this.loyaltyDiscount,
     this.loyaltyPointsUsed,
+    this.tableNumber,
+    this.customerAddress,
     this.cancellationReason,
   });
 
@@ -70,6 +77,8 @@ class Order {
       customerCarPlate: customerCarPlate,
       loyaltyDiscount: loyaltyDiscount,
       loyaltyPointsUsed: loyaltyPointsUsed,
+      tableNumber: tableNumber,
+      customerAddress: customerAddress,
       cancellationReason: cancellationReason ?? this.cancellationReason,
     );
   }
