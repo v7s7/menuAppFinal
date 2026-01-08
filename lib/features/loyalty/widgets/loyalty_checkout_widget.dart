@@ -10,6 +10,38 @@ import '../data/loyalty_service.dart';
 import '../data/checkout_fields_config.dart';
 import '../data/checkout_fields_service.dart';
 
+/// Order type enum for tab selection
+enum OrderType {
+  carPlate,
+  delivery,
+  dineIn;
+
+  String get label {
+    switch (this) {
+      case OrderType.carPlate:
+        return 'Car Plate';
+      case OrderType.delivery:
+        return 'Delivery';
+      case OrderType.dineIn:
+        return 'Dine-in';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case OrderType.carPlate:
+        return Icons.directions_car;
+      case OrderType.delivery:
+        return Icons.delivery_dining;
+      case OrderType.dineIn:
+        return Icons.restaurant;
+    }
+  }
+}
+
+/// State provider for selected order type
+final selectedOrderTypeProvider = StateProvider<OrderType?>((ref) => null);
+
 /// State provider for customer phone number during checkout
 final checkoutPhoneProvider = StateProvider<String>((ref) => '');
 
@@ -117,25 +149,36 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
   }
 
   Widget _buildFields(LoyaltySettings loyaltySettings, CheckoutFieldsConfig config) {
+    // Determine available order types based on config
+    final availableTypes = <OrderType>[];
+    if (config.plateNumberRequired) availableTypes.add(OrderType.carPlate);
+    if (config.addressRequired) availableTypes.add(OrderType.delivery);
+    if (config.tableRequired) availableTypes.add(OrderType.dineIn);
+
+    // Auto-select first type if none selected
+    final selectedType = ref.watch(selectedOrderTypeProvider);
+    if (availableTypes.isNotEmpty && selectedType == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(selectedOrderTypeProvider.notifier).state = availableTypes.first;
+      });
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Divider(height: 32),
-        Row(
-          children: [
-            Icon(Icons.directions_car, color: loyaltySettings.enabled ? Colors.purple : Colors.grey),
-            const SizedBox(width: 8),
-            Text(
-              loyaltySettings.enabled ? 'Customer Info & Loyalty' : 'Customer Info',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
+        const Divider(height: 24),
 
-        // Phone Number Input (conditional)
+        // Order Type Tabs (only show if more than one type is available)
+        if (availableTypes.length > 1) ...[
+          _buildOrderTypeTabs(availableTypes, selectedType),
+          const SizedBox(height: 16),
+        ] else if (availableTypes.length == 1) ...[
+          // Show single type as minimal chip
+          _buildSingleTypeChip(availableTypes.first),
+          const SizedBox(height: 12),
+        ],
+
+        // Phone Number Input (always show for loyalty)
         if (config.phoneRequired) ...[
           IntlPhoneField(
             controller: _phoneNumberController,
@@ -196,149 +239,9 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
           const SizedBox(height: 12),
         ],
 
-        // Car Plate Input (conditional)
-        if (config.plateNumberRequired) ...[
-          TextField(
-            controller: _carPlateController,
-            decoration: const InputDecoration(
-              labelText: 'Car Plate',
-              hintText: 'e.g., 12345',
-              prefixIcon: Icon(Icons.directions_car),
-              border: OutlineInputBorder(),
-            ),
-            textCapitalization: TextCapitalization.characters,
-            maxLength: 7,
-            onChanged: (value) {
-              ref.read(checkoutCarPlateProvider.notifier).state = value;
-              _updateCheckoutData(loyaltySettings, config);
-            },
-          ),
-          const SizedBox(height: 12),
-        ],
-
-        // Table Number Input (conditional)
-        if (config.tableRequired) ...[
-          TextField(
-            controller: _tableController,
-            decoration: const InputDecoration(
-              labelText: 'Table Number',
-              hintText: 'e.g., 5',
-              prefixIcon: Icon(Icons.table_restaurant),
-              border: OutlineInputBorder(),
-            ),
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            maxLength: 4,
-            onChanged: (value) {
-              ref.read(checkoutTableProvider.notifier).state = value;
-              _updateCheckoutData(loyaltySettings, config);
-            },
-          ),
-          const SizedBox(height: 12),
-        ],
-
-        // Address Fields (conditional)
-        if (config.addressRequired) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const Icon(Icons.home, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Delivery Address (Bahrain)',
-                style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _addressHomeController,
-            decoration: const InputDecoration(
-              labelText: 'Home',
-              hintText: 'e.g., 123',
-              prefixIcon: Icon(Icons.home),
-              border: OutlineInputBorder(),
-            ),
-            onChanged: (value) {
-              ref.read(checkoutAddressHomeProvider.notifier).state = value;
-              _updateCheckoutData(loyaltySettings, config);
-            },
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _addressRoadController,
-            decoration: const InputDecoration(
-              labelText: 'Road',
-              hintText: 'e.g., 12',
-              prefixIcon: Icon(Icons.signpost),
-              border: OutlineInputBorder(),
-            ),
-            onChanged: (value) {
-              ref.read(checkoutAddressRoadProvider.notifier).state = value;
-              _updateCheckoutData(loyaltySettings, config);
-            },
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _addressBlockController,
-            decoration: const InputDecoration(
-              labelText: 'Block',
-              hintText: 'e.g., 345',
-              prefixIcon: Icon(Icons.grid_4x4),
-              border: OutlineInputBorder(),
-            ),
-            onChanged: (value) {
-              ref.read(checkoutAddressBlockProvider.notifier).state = value;
-              _updateCheckoutData(loyaltySettings, config);
-            },
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _addressCityController,
-            decoration: const InputDecoration(
-              labelText: 'City',
-              hintText: 'e.g., Manama',
-              prefixIcon: Icon(Icons.location_city),
-              border: OutlineInputBorder(),
-            ),
-            textCapitalization: TextCapitalization.words,
-            onChanged: (value) {
-              ref.read(checkoutAddressCityProvider.notifier).state = value;
-              _updateCheckoutData(loyaltySettings, config);
-            },
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _addressFlatController,
-            decoration: const InputDecoration(
-              labelText: 'Flat / Unit (Optional)',
-              hintText: 'e.g., 2A',
-              prefixIcon: Icon(Icons.meeting_room),
-              border: OutlineInputBorder(),
-            ),
-            onChanged: (value) {
-              ref.read(checkoutAddressFlatProvider.notifier).state = value;
-              _updateCheckoutData(loyaltySettings, config);
-            },
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _addressNotesController,
-            decoration: const InputDecoration(
-              labelText: 'Additional Notes (Optional)',
-              hintText: 'e.g., Near the park',
-              prefixIcon: Icon(Icons.notes),
-              border: OutlineInputBorder(),
-            ),
-            maxLines: 2,
-            onChanged: (value) {
-              ref.read(checkoutAddressNotesProvider.notifier).state = value;
-              _updateCheckoutData(loyaltySettings, config);
-            },
-          ),
-          const SizedBox(height: 12),
+        // Show fields based on selected order type
+        if (selectedType != null) ...[
+          _buildOrderTypeFields(selectedType, config, loyaltySettings),
         ],
 
         if (loyaltySettings.enabled && config.phoneRequired) ...[
@@ -347,6 +250,275 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
         ],
       ],
     );
+  }
+
+  Widget _buildOrderTypeTabs(List<OrderType> types, OrderType? selected) {
+    // Get secondary color from theme (branding)
+    final secondaryColor = Theme.of(context).colorScheme.onPrimary;
+    
+    return Row(
+      children: types.map((type) {
+        final isSelected = selected == type;
+        return Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: InkWell(
+              onTap: () {
+                ref.read(selectedOrderTypeProvider.notifier).state = type;
+                _clearFieldsForType(type);
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isSelected 
+                        ? secondaryColor
+                        : Colors.grey.withOpacity(0.15),
+                    width: 1,
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      type.icon,
+                      size: 24,
+                      color: isSelected 
+                          ? secondaryColor
+                          : Colors.grey.shade600,
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      type.label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                        color: isSelected 
+                            ? secondaryColor
+                            : Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildSingleTypeChip(OrderType type) {
+    // Get secondary color from theme (branding)
+    final secondaryColor = Theme.of(context).colorScheme.onPrimary;
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: secondaryColor,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(type.icon, color: secondaryColor, size: 14),
+          const SizedBox(width: 6),
+          Text(
+            type.label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: secondaryColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrderTypeFields(OrderType type, CheckoutFieldsConfig config, LoyaltySettings loyaltySettings) {
+    switch (type) {
+      case OrderType.carPlate:
+        return _buildCarPlateFields(config, loyaltySettings);
+      case OrderType.delivery:
+        return _buildDeliveryFields(config, loyaltySettings);
+      case OrderType.dineIn:
+        return _buildDineInFields(config, loyaltySettings);
+    }
+  }
+
+  Widget _buildCarPlateFields(CheckoutFieldsConfig config, LoyaltySettings loyaltySettings) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: _carPlateController,
+          decoration: const InputDecoration(
+            labelText: 'Car Plate Number',
+            hintText: 'e.g., 12345',
+            prefixIcon: Icon(Icons.directions_car),
+            border: OutlineInputBorder(),
+          ),
+          textCapitalization: TextCapitalization.characters,
+          maxLength: 7,
+          onChanged: (value) {
+            ref.read(checkoutCarPlateProvider.notifier).state = value;
+            _updateCheckoutData(loyaltySettings, config);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDeliveryFields(CheckoutFieldsConfig config, LoyaltySettings loyaltySettings) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: _addressHomeController,
+          decoration: const InputDecoration(
+            labelText: 'Home',
+            hintText: 'e.g., 123',
+            prefixIcon: Icon(Icons.home),
+            border: OutlineInputBorder(),
+          ),
+          onChanged: (value) {
+            ref.read(checkoutAddressHomeProvider.notifier).state = value;
+            _updateCheckoutData(loyaltySettings, config);
+          },
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _addressRoadController,
+          decoration: const InputDecoration(
+            labelText: 'Road',
+            hintText: 'e.g., 12',
+            prefixIcon: Icon(Icons.signpost),
+            border: OutlineInputBorder(),
+          ),
+          onChanged: (value) {
+            ref.read(checkoutAddressRoadProvider.notifier).state = value;
+            _updateCheckoutData(loyaltySettings, config);
+          },
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _addressBlockController,
+          decoration: const InputDecoration(
+            labelText: 'Block',
+            hintText: 'e.g., 345',
+            prefixIcon: Icon(Icons.grid_4x4),
+            border: OutlineInputBorder(),
+          ),
+          onChanged: (value) {
+            ref.read(checkoutAddressBlockProvider.notifier).state = value;
+            _updateCheckoutData(loyaltySettings, config);
+          },
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _addressCityController,
+          decoration: const InputDecoration(
+            labelText: 'City',
+            hintText: 'e.g., Manama',
+            prefixIcon: Icon(Icons.location_city),
+            border: OutlineInputBorder(),
+          ),
+          textCapitalization: TextCapitalization.words,
+          onChanged: (value) {
+            ref.read(checkoutAddressCityProvider.notifier).state = value;
+            _updateCheckoutData(loyaltySettings, config);
+          },
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _addressFlatController,
+          decoration: const InputDecoration(
+            labelText: 'Flat / Unit (Optional)',
+            hintText: 'e.g., 2A',
+            prefixIcon: Icon(Icons.meeting_room),
+            border: OutlineInputBorder(),
+          ),
+          onChanged: (value) {
+            ref.read(checkoutAddressFlatProvider.notifier).state = value;
+            _updateCheckoutData(loyaltySettings, config);
+          },
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _addressNotesController,
+          decoration: const InputDecoration(
+            labelText: 'Additional Notes (Optional)',
+            hintText: 'e.g., Near the park',
+            prefixIcon: Icon(Icons.notes),
+            border: OutlineInputBorder(),
+          ),
+          maxLines: 2,
+          onChanged: (value) {
+            ref.read(checkoutAddressNotesProvider.notifier).state = value;
+            _updateCheckoutData(loyaltySettings, config);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDineInFields(CheckoutFieldsConfig config, LoyaltySettings loyaltySettings) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: _tableController,
+          decoration: const InputDecoration(
+            labelText: 'Table Number',
+            hintText: 'e.g., 5',
+            prefixIcon: Icon(Icons.table_restaurant),
+            border: OutlineInputBorder(),
+          ),
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          maxLength: 4,
+          onChanged: (value) {
+            ref.read(checkoutTableProvider.notifier).state = value;
+            _updateCheckoutData(loyaltySettings, config);
+          },
+        ),
+      ],
+    );
+  }
+
+  void _clearFieldsForType(OrderType type) {
+    // Clear fields based on what's NOT selected
+    if (type != OrderType.carPlate) {
+      _carPlateController.clear();
+      ref.read(checkoutCarPlateProvider.notifier).state = '';
+    }
+    if (type != OrderType.delivery) {
+      _addressHomeController.clear();
+      _addressRoadController.clear();
+      _addressBlockController.clear();
+      _addressCityController.clear();
+      _addressFlatController.clear();
+      _addressNotesController.clear();
+      ref.read(checkoutAddressHomeProvider.notifier).state = '';
+      ref.read(checkoutAddressRoadProvider.notifier).state = '';
+      ref.read(checkoutAddressBlockProvider.notifier).state = '';
+      ref.read(checkoutAddressCityProvider.notifier).state = '';
+      ref.read(checkoutAddressFlatProvider.notifier).state = '';
+      ref.read(checkoutAddressNotesProvider.notifier).state = '';
+    }
+    if (type != OrderType.dineIn) {
+      _tableController.clear();
+      ref.read(checkoutTableProvider.notifier).state = '';
+    }
   }
 
   Widget _buildCustomerProfileCard(LoyaltySettings settings) {

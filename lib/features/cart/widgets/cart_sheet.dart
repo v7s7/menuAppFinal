@@ -40,7 +40,27 @@ class _CartSheetState extends ConsumerState<CartSheet> {
       final checkoutFieldsService = ref.read(checkoutFieldsServiceProvider);
       final config = await checkoutFieldsService.getCheckoutFieldsConfig();
 
-      // Validate required fields based on configuration
+      // Determine available order types
+      final availableTypes = <String>[];
+      if (config.plateNumberRequired) availableTypes.add('Car Plate');
+      if (config.addressRequired) availableTypes.add('Delivery');
+      if (config.tableRequired) availableTypes.add('Dine-in');
+
+      // Check if user selected an order type (when multiple are available)
+      final selectedType = ref.read(selectedOrderTypeProvider);
+      if (availableTypes.length > 1 && selectedType == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please select an order type to continue'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Validate required fields based on selected order type
       if (config.phoneRequired && _checkoutData.phone.isEmpty) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -52,7 +72,9 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         }
         return;
       }
-      if (config.plateNumberRequired && _checkoutData.carPlate.isEmpty) {
+
+      // Validate based on selected order type
+      if (selectedType == OrderType.carPlate && _checkoutData.carPlate.isEmpty) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -63,7 +85,7 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         }
         return;
       }
-      if (config.tableRequired && (_checkoutData.table == null || _checkoutData.table!.isEmpty)) {
+      if (selectedType == OrderType.dineIn && (_checkoutData.table == null || _checkoutData.table!.isEmpty)) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -74,7 +96,7 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         }
         return;
       }
-      if (config.addressRequired && (_checkoutData.address == null || !_checkoutData.address!.isValid)) {
+      if (selectedType == OrderType.delivery && (_checkoutData.address == null || !_checkoutData.address!.isValid)) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
