@@ -456,9 +456,21 @@ async function processNewOrder(env, token, projectId, doc, merchantId, branchId,
     const subtotal = Number(firestoreValue(fields.subtotal) || 0);
     const items = firestoreValue(fields.items) || [];
 
+    // ADDED: requester info
+    const customerPhone = firestoreValue(fields.customerPhone);
+    const customerCarPlate = firestoreValue(fields.customerCarPlate);
+
     console.log(`[NEW] Processing ${orderNo} (${merchantId}/${branchId})`);
 
-    const message = formatNewOrderMessage(orderNo, table, items, subtotal);
+    const message = formatNewOrderMessage(
+      orderNo,
+      table,
+      items,
+      subtotal,
+      customerPhone,
+      customerCarPlate
+    );
+
     const sid = await sendWhatsAppMessage(env, config.whatsappNumber, message);
     if (!sid) return;
 
@@ -486,9 +498,29 @@ async function processCancelledOrder(env, token, projectId, doc, merchantId, bra
     const items = firestoreValue(fields.items) || [];
     const reason = firestoreValue(fields.cancellationReason);
 
+    // ADDED: requester info
+    const customerPhone = firestoreValue(fields.customerPhone);
+    const customerCarPlate = firestoreValue(fields.customerCarPlate);
+
+    // ADDED: who cancelled
+    const cancelledByUid = firestoreValue(fields.updatedByUid);
+    const cancelledByRole = firestoreValue(fields.updatedByRole);
+    const cancelledByEmail = firestoreValue(fields.updatedByEmail);
+
     console.log(`[CANCEL] Processing ${orderNo} (${merchantId}/${branchId})`);
 
-    const message = formatCancelledOrderMessage(orderNo, table, items, subtotal, reason);
+    const message = formatCancelledOrderMessage(
+      orderNo,
+      table,
+      items,
+      subtotal,
+      reason,
+      customerPhone,
+      customerCarPlate,
+      cancelledByRole,
+      cancelledByEmail || cancelledByUid
+    );
+
     const sid = await sendWhatsAppMessage(env, config.whatsappNumber, message);
     if (!sid) return;
 
@@ -520,10 +552,10 @@ function buildNotificationsUpdateWrite(documentName, updateTime, notifFields) {
     } else if (typeof v === "number") notifMap[k] = { doubleValue: v };
   }
 
-  // FIX: currentDocument is a oneof (exists OR updateTime). Never set both.
+  // FIX (kept): currentDocument is a oneof (exists OR updateTime). Never set both.
   const currentDocument = updateTime ? { updateTime } : { exists: true };
 
-  const write = {
+  return {
     update: {
       name: documentName,
       fields: {
@@ -535,8 +567,6 @@ function buildNotificationsUpdateWrite(documentName, updateTime, notifFields) {
     updateMask: { fieldPaths: mask },
     currentDocument,
   };
-
-  return write;
 }
 
 // ============================================================================
@@ -591,8 +621,17 @@ function asWhatsAppAddress(n) {
 // MESSAGES
 // ============================================================================
 
-function formatNewOrderMessage(orderNo, table, items, subtotal) {
+function formatNewOrderMessage(orderNo, table, items, subtotal, customerPhone, customerCarPlate) {
   let msg = `🔔 *New Order: ${orderNo}*\n\n`;
+
+  // ADDED: requester info
+  if (customerCarPlate || customerPhone) {
+    msg += `*Customer Info:*\n`;
+    if (customerCarPlate) msg += `🚗 Plate: ${customerCarPlate}\n`;
+    if (customerPhone) msg += `📱 Phone: ${customerPhone}\n`;
+    msg += `\n`;
+  }
+
   if (table) msg += `📍 Table: ${table}\n\n`;
 
   msg += `*Items:*\n`;
@@ -610,8 +649,41 @@ function formatNewOrderMessage(orderNo, table, items, subtotal) {
   return msg;
 }
 
-function formatCancelledOrderMessage(orderNo, table, items, subtotal, reason) {
+function formatCancelledOrderMessage(
+  orderNo,
+  table,
+  items,
+  subtotal,
+  reason,
+  customerPhone,
+  customerCarPlate,
+  cancelledByRole,
+  cancelledByEmailOrUid
+) {
   let msg = `❌ *Order Cancelled: ${orderNo}*\n\n`;
+
+  // ADDED: who cancelled
+  if (cancelledByRole || cancelledByEmailOrUid) {
+    msg += `*Cancelled By:*\n`;
+    if (cancelledByRole) {
+      const roleLabel = cancelledByRole === "admin" ? "👤 Admin" : "👥 Staff";
+      msg += `${roleLabel}`;
+      if (cancelledByEmailOrUid) msg += `: ${cancelledByEmailOrUid}`;
+      msg += `\n`;
+    } else if (cancelledByEmailOrUid) {
+      msg += `User: ${cancelledByEmailOrUid}\n`;
+    }
+    msg += `\n`;
+  }
+
+  // ADDED: requester info
+  if (customerCarPlate || customerPhone) {
+    msg += `*Customer Info:*\n`;
+    if (customerCarPlate) msg += `🚗 Plate: ${customerCarPlate}\n`;
+    if (customerPhone) msg += `📱 Phone: ${customerPhone}\n`;
+    msg += `\n`;
+  }
+
   if (table) msg += `📍 Table: ${table}\n\n`;
   if (reason) msg += `*Reason:* ${reason}\n\n`;
 
