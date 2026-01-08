@@ -91,11 +91,13 @@ service cloud.firestore {
             request.resource.data.subtotal is number &&
             request.resource.data.subtotal >= 0 &&
             request.resource.data.subtotal <= 1000 &&
-            // WhatsApp notification tracking: must be initialized on creation
-            request.resource.data.notifications is map &&
-            request.resource.data.notifications.keys().hasOnly(['waNewSent', 'waCancelSent']) &&
-            request.resource.data.notifications.waNewSent == false &&
-            request.resource.data.notifications.waCancelSent == false;
+            // WhatsApp notification tracking: optional for backwards compatibility
+            // If present, must be properly initialized
+            (!request.resource.data.keys().hasAny(['notifications']) ||
+             (request.resource.data.notifications is map &&
+              request.resource.data.notifications.keys().hasOnly(['waNewSent', 'waCancelSent']) &&
+              request.resource.data.notifications.waNewSent == false &&
+              request.resource.data.notifications.waCancelSent == false));
 
           // READ: Own orders or staff
           allow read: if isSignedIn() &&
