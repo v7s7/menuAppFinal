@@ -18,3 +18,8 @@ node_modules/
 .tmp_customer/
 .tmp_merchant/
 build/
+
+node_modules/
+.wrangler/
+node_modules/.cache/
+
