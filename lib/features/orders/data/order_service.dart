@@ -36,8 +36,14 @@ class OrderService {
   /// - merchantId / branchId match path
   /// - items is a non-empty list (bounded)
   /// - Only staff can later update `status`
+  ///
+  /// Validates fulfillment requirements:
+  /// - carPickup requires customerCarPlate
+  /// - delivery requires customerAddress
+  /// - dineIn requires table
   Future<om.Order> createOrder({
     required List<om.OrderItem> items,
+    required om.FulfillmentType fulfillmentType,
     String? table,
     String? customerPhone,
     String? customerCarPlate,
@@ -51,6 +57,32 @@ class OrderService {
     }
     if (items.isEmpty) {
       throw StateError('Cart is empty.');
+    }
+
+    // Validate fulfillment requirements
+    switch (fulfillmentType) {
+      case om.FulfillmentType.carPickup:
+        if (customerCarPlate == null || customerCarPlate.trim().isEmpty) {
+          throw StateError('Car plate is required for car pickup orders.');
+        }
+        break;
+      case om.FulfillmentType.delivery:
+        if (customerAddress == null || customerAddress.isEmpty) {
+          throw StateError('Delivery address is required for delivery orders.');
+        }
+        // Validate required address fields
+        if (customerAddress['home'] == null ||
+            customerAddress['road'] == null ||
+            customerAddress['block'] == null ||
+            customerAddress['city'] == null) {
+          throw StateError('Complete address (Home, Road, Block, City) is required for delivery.');
+        }
+        break;
+      case om.FulfillmentType.dineIn:
+        if (table == null || table.trim().isEmpty) {
+          throw StateError('Table number is required for dine-in orders.');
+        }
+        break;
     }
 
     // Subtotal rounded to 3 decimals (BHD)
@@ -101,6 +133,7 @@ class OrderService {
         'branchId': _b,
         'userId': uid,
         'status': 'pending',
+        'fulfillmentType': fulfillmentType.toFirestore(), // NEW: Canonical fulfillment type
         'items': items.map((e) => {
               'productId': e.productId,
               'name': e.name,
@@ -134,6 +167,7 @@ class OrderService {
       createdAt: DateTime.now(),
       items: items,
       subtotal: subtotal,
+      fulfillmentType: fulfillmentType,
       table: table,
       customerPhone: customerPhone,
       customerCarPlate: customerCarPlate,
@@ -181,6 +215,30 @@ class OrderService {
         }
       }
 
+      // Read fulfillmentType with backward compatibility
+      om.FulfillmentType fulfillmentType;
+      final fulfillmentTypeStr = _asNullableString(data['fulfillmentType']);
+
+      if (fulfillmentTypeStr != null && fulfillmentTypeStr.isNotEmpty) {
+        // New orders have explicit fulfillmentType field
+        fulfillmentType = om.FulfillmentTypeX.fromFirestore(fulfillmentTypeStr);
+      } else {
+        // Backward compatibility: infer from existing fields
+        // Priority: address > car plate > table (most specific to least)
+        if (address != null) {
+          fulfillmentType = om.FulfillmentType.delivery;
+        } else if (_asNullableString(data['customerCarPlate']) != null &&
+                   _asNullableString(data['customerCarPlate'])!.trim().isNotEmpty) {
+          fulfillmentType = om.FulfillmentType.carPickup;
+        } else {
+          // Default to dine-in if table exists, otherwise car pickup
+          fulfillmentType = _asNullableString(data['table']) != null &&
+                           _asNullableString(data['table'])!.trim().isNotEmpty
+              ? om.FulfillmentType.dineIn
+              : om.FulfillmentType.carPickup;
+        }
+      }
+
       return om.Order(
         orderId: snap.id,
         orderNo: _asString(data['orderNo'], fallback: '—'),
@@ -188,6 +246,7 @@ class OrderService {
         createdAt: createdAt,
         items: itemsList,
         subtotal: double.parse(subtotalNum.toStringAsFixed(3)),
+        fulfillmentType: fulfillmentType,
         table: _asNullableString(data['table']),
         customerPhone: _asNullableString(data['customerPhone']),
         customerCarPlate: _asNullableString(data['customerCarPlate']),

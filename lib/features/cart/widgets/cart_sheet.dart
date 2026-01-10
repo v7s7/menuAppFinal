@@ -6,7 +6,7 @@ import '../../sweets/data/sweets_repo.dart'; // sweetsStreamProvider
 import '../../sweets/data/sweet.dart';
 import '../state/cart_controller.dart';
 
-import '../../orders/data/order_models.dart';
+import '../../orders/data/order_models.dart' show OrderItem, FulfillmentType;
 import '../../orders/data/order_service.dart';
 import '../../orders/screens/order_status_page.dart';
 
@@ -129,10 +129,25 @@ class _CartSheetState extends ConsumerState<CartSheet> {
       // Effective table: QR takes precedence, otherwise use manual entry
       final effectiveTable = (qrTable != null && qrTable.isNotEmpty) ? qrTable : manualTable;
 
+      // Convert OrderType to FulfillmentType
+      FulfillmentType fulfillmentType;
+      switch (selectedType!) {
+        case OrderType.carPlate:
+          fulfillmentType = FulfillmentType.carPickup;
+          break;
+        case OrderType.delivery:
+          fulfillmentType = FulfillmentType.delivery;
+          break;
+        case OrderType.dineIn:
+          fulfillmentType = FulfillmentType.dineIn;
+          break;
+      }
+
       // Create order with configured fields
       final service = ref.read(orderServiceProvider);
       final order = await service.createOrder(
         items: items,
+        fulfillmentType: fulfillmentType,
         table: effectiveTable,
         customerPhone: config.phoneRequired ? _checkoutData.phone : null,
         customerCarPlate: config.plateNumberRequired ? _checkoutData.carPlate : null,

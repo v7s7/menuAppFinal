@@ -3,6 +3,45 @@ import '../../loyalty/data/checkout_fields_config.dart';
 
 enum OrderStatus { pending, accepted, preparing, ready, served, cancelled }
 
+enum FulfillmentType { carPickup, delivery, dineIn }
+
+extension FulfillmentTypeX on FulfillmentType {
+  String get label {
+    switch (this) {
+      case FulfillmentType.carPickup:
+        return 'Car Pickup';
+      case FulfillmentType.delivery:
+        return 'Delivery';
+      case FulfillmentType.dineIn:
+        return 'Dine-in';
+    }
+  }
+
+  String toFirestore() {
+    switch (this) {
+      case FulfillmentType.carPickup:
+        return 'car_pickup';
+      case FulfillmentType.delivery:
+        return 'delivery';
+      case FulfillmentType.dineIn:
+        return 'dine_in';
+    }
+  }
+
+  static FulfillmentType fromFirestore(String value) {
+    switch (value) {
+      case 'car_pickup':
+        return FulfillmentType.carPickup;
+      case 'delivery':
+        return FulfillmentType.delivery;
+      case 'dine_in':
+        return FulfillmentType.dineIn;
+      default:
+        return FulfillmentType.carPickup; // Default fallback
+    }
+  }
+}
+
 extension OrderStatusX on OrderStatus {
   String get label => describeEnum(this).toUpperCase();
 }
@@ -32,6 +71,10 @@ class Order {
   final DateTime createdAt;
   final List<OrderItem> items;
   final double subtotal;
+
+  // Fulfillment type (REQUIRED - canonical source of truth)
+  final FulfillmentType fulfillmentType;
+
   final String? table; // Table number: from QR scan or manual entry at checkout
 
   // Loyalty fields
@@ -53,6 +96,7 @@ class Order {
     required this.createdAt,
     required this.items,
     required this.subtotal,
+    required this.fulfillmentType,
     this.table,
     this.customerPhone,
     this.customerCarPlate,
@@ -70,6 +114,7 @@ class Order {
       createdAt: createdAt,
       items: items,
       subtotal: subtotal,
+      fulfillmentType: fulfillmentType,
       table: table,
       customerPhone: customerPhone,
       customerCarPlate: customerCarPlate,

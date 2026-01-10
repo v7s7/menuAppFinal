@@ -79,6 +79,10 @@ class _AdminOrder {
   final DateTime createdAt;
   final List<_AdminItem> items;
   final double subtotal;
+
+  // Fulfillment type (REQUIRED - canonical source of truth)
+  final om.FulfillmentType fulfillmentType;
+
   final String? table;
 
   // Loyalty fields
@@ -100,6 +104,7 @@ class _AdminOrder {
     required this.createdAt,
     required this.items,
     required this.subtotal,
+    required this.fulfillmentType,
     this.table,
     this.customerPhone,
     this.customerCarPlate,
@@ -180,6 +185,31 @@ final ordersStreamProvider =
               : int.tryParse('${data['loyaltyPointsUsed']}') ?? 0)
           : null;
 
+      // Read fulfillmentType with backward compatibility
+      om.FulfillmentType fulfillmentType;
+      final fulfillmentTypeStr = (data['fulfillmentType'] as String?)?.trim();
+      final addressStr = (data['customerAddress'] is Map)
+          ? _formatAddress(data['customerAddress'] as Map<String, dynamic>)
+          : null;
+      final carPlate = (data['customerCarPlate'] as String?)?.trim();
+      final table = (data['table'] as String?)?.trim();
+
+      if (fulfillmentTypeStr != null && fulfillmentTypeStr.isNotEmpty) {
+        // New orders have explicit fulfillmentType field
+        fulfillmentType = om.FulfillmentTypeX.fromFirestore(fulfillmentTypeStr);
+      } else {
+        // Backward compatibility: infer from existing fields
+        if (addressStr != null && addressStr.isNotEmpty) {
+          fulfillmentType = om.FulfillmentType.delivery;
+        } else if (carPlate != null && carPlate.isNotEmpty) {
+          fulfillmentType = om.FulfillmentType.carPickup;
+        } else {
+          fulfillmentType = table != null && table.isNotEmpty
+              ? om.FulfillmentType.dineIn
+              : om.FulfillmentType.carPickup;
+        }
+      }
+
       return _AdminOrder(
         id: d.id,
         orderNo: (data['orderNo'] ?? '—').toString(),
@@ -187,14 +217,13 @@ final ordersStreamProvider =
         createdAt: dt,
         items: items,
         subtotal: double.parse(subtotal.toStringAsFixed(3)),
-        table: (data['table'] as String?)?.trim(),
+        fulfillmentType: fulfillmentType,
+        table: table,
         customerPhone: (data['customerPhone'] as String?)?.trim(),
-        customerCarPlate: (data['customerCarPlate'] as String?)?.trim(),
+        customerCarPlate: carPlate,
         loyaltyDiscount: loyaltyDiscount,
         loyaltyPointsUsed: loyaltyPointsUsed,
-        customerAddress: (data['customerAddress'] is Map)
-            ? _formatAddress(data['customerAddress'] as Map<String, dynamic>)
-            : null,
+        customerAddress: addressStr,
         cancellationReason: (data['cancellationReason'] as String?)?.trim(),
       );
     }).toList();
@@ -479,7 +508,7 @@ class _OrderTile extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Top row: Order # + Car plate (PROMINENT) + Time + Status
+              // Top row: Order # + Fulfillment Info (PROMINENT) + Time + Status
               Row(
                 children: [
                   // Order number (small font)
@@ -493,32 +522,11 @@ class _OrderTile extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // Car plate - MOST IMPORTANT
-                  if (order.customerCarPlate != null && order.customerCarPlate!.isNotEmpty)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: cs.primary,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.directions_car, size: 18, color: cs.onPrimary),
-                          const SizedBox(width: 6),
-                          Text(
-                            order.customerCarPlate!,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900,
-                              color: cs.onPrimary,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  const Spacer(),
+                  // Fulfillment badge - MOST IMPORTANT
+                  Flexible(
+                    child: _buildFulfillmentBadge(order, cs),
+                  ),
+                  const SizedBox(width: 8),
                   // Time
                   Text(
                     _fmtTimeRelative(order.createdAt),
@@ -642,6 +650,98 @@ class _OrderTile extends ConsumerWidget {
     return '${dt.month}/${dt.day} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}';
   }
 
+  Widget _buildFulfillmentBadge(_AdminOrder order, ColorScheme cs) {
+    IconData icon;
+    String info;
+
+    switch (order.fulfillmentType) {
+      case om.FulfillmentType.carPickup:
+        icon = Icons.directions_car;
+        info = order.customerCarPlate ?? 'N/A';
+        break;
+      case om.FulfillmentType.delivery:
+        icon = Icons.delivery_dining;
+        // Show first part of address or "Delivery"
+        info = order.customerAddress?.split(',').first ?? 'Delivery';
+        break;
+      case om.FulfillmentType.dineIn:
+        icon = Icons.restaurant;
+        info = order.table != null ? 'Table #${order.table}' : 'Dine-in';
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: cs.primary,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: cs.onPrimary),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              info,
+              style: TextStyle(
+                fontSize: order.fulfillmentType == om.FulfillmentType.carPickup ? 16 : 14,
+                fontWeight: FontWeight.w900,
+                color: cs.onPrimary,
+                letterSpacing: order.fulfillmentType == om.FulfillmentType.carPickup ? 1.2 : 0.5,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailFulfillmentBadge(_AdminOrder order, ColorScheme cs) {
+    IconData icon;
+    String label;
+
+    switch (order.fulfillmentType) {
+      case om.FulfillmentType.carPickup:
+        icon = Icons.directions_car;
+        label = 'Car Pickup';
+        break;
+      case om.FulfillmentType.delivery:
+        icon = Icons.delivery_dining;
+        label = 'Delivery';
+        break;
+      case om.FulfillmentType.dineIn:
+        icon = Icons.restaurant;
+        label = 'Dine-in';
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: cs.primary.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: cs.primary, width: 1.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: cs.primary),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: cs.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showItems(BuildContext context, _AdminOrder o) {
     final cs = Theme.of(context).colorScheme;
     final onSurface = cs.onSurface;
@@ -661,7 +761,7 @@ class _OrderTile extends ConsumerWidget {
               controller: controller,
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               children: [
-                // Header: Order Number + Car Plate
+                // Header: Order Number + Fulfillment Type Badge
                 Row(
                   children: [
                     Text(
@@ -671,31 +771,9 @@ class _OrderTile extends ConsumerWidget {
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const Spacer(),
-                    if (o.customerCarPlate != null && o.customerCarPlate!.isNotEmpty)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: cs.primary,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.directions_car, size: 16, color: cs.onPrimary),
-                            const SizedBox(width: 6),
-                            Text(
-                              o.customerCarPlate!,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w900,
-                                color: cs.onPrimary,
-                                letterSpacing: 1.0,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                    const SizedBox(width: 8),
+                    // Fulfillment type badge
+                    _buildDetailFulfillmentBadge(o, cs),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -718,7 +796,8 @@ class _OrderTile extends ConsumerWidget {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        if (o.customerPhone != null && o.customerPhone!.isNotEmpty)
+                        // Phone number
+                        if (o.customerPhone != null && o.customerPhone!.isNotEmpty) ...[
                           Row(
                             children: [
                               Icon(Icons.phone, size: 16, color: onSurface.withOpacity(0.6)),
@@ -732,42 +811,74 @@ class _OrderTile extends ConsumerWidget {
                               ),
                             ],
                           ),
-                        if (o.table != null && o.table!.isNotEmpty) ...[
                           const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Icon(Icons.table_restaurant, size: 16, color: onSurface.withOpacity(0.6)),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Table #${o.table}',
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
                         ],
-                        // NEW: Delivery Address
-                        if (o.customerAddress != null) ...[
-                          const SizedBox(height: 6),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Icon(Icons.home, size: 16, color: onSurface.withOpacity(0.6)),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  o.customerAddress!.toString(),
-                                  style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
+                        // Fulfillment-specific info
+                        ...() {
+                          switch (o.fulfillmentType) {
+                            case om.FulfillmentType.carPickup:
+                              if (o.customerCarPlate != null && o.customerCarPlate!.isNotEmpty) {
+                                return [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.directions_car, size: 16, color: onSurface.withOpacity(0.6)),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Car Plate: ${o.customerCarPlate}',
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                          letterSpacing: 1.0,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                                ];
+                              }
+                              return <Widget>[];
+                            case om.FulfillmentType.delivery:
+                              if (o.customerAddress != null) {
+                                return [
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Icon(Icons.delivery_dining, size: 16, color: onSurface.withOpacity(0.6)),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          o.customerAddress!,
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ];
+                              }
+                              return <Widget>[];
+                            case om.FulfillmentType.dineIn:
+                              if (o.table != null && o.table!.isNotEmpty) {
+                                return [
+                                  Row(
+                                    children: [
+                                      Icon(Icons.restaurant, size: 16, color: onSurface.withOpacity(0.6)),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Table #${o.table}',
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ];
+                              }
+                              return <Widget>[];
+                          }
+                        }(),
                         // Loyalty Points Usage
                         if (o.loyaltyPointsUsed != null && o.loyaltyPointsUsed! > 0) ...[
                           const SizedBox(height: 12),
