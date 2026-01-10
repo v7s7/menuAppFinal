@@ -296,17 +296,40 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         // Check if at least cart has items (detailed validation happens in _confirmOrder)
         // We do basic check here to enable/disable button
         final configAsync = ref.watch(checkoutFieldsConfigProvider);
+        final selectedType = ref.watch(selectedOrderTypeProvider);
+
         final hasMinimumInfo = configAsync.when(
           data: (config) {
-            // Check if at least required fields are not empty
+            // Check phone if required (applies to all types)
             if (config.phoneRequired && _checkoutData.phone.isEmpty) return false;
-            if (config.plateNumberRequired && _checkoutData.carPlate.isEmpty) return false;
-            if (config.tableRequired && (_checkoutData.table == null || _checkoutData.table!.isEmpty)) return false;
-            if (config.addressRequired && (_checkoutData.address == null || !_checkoutData.address!.isValid)) return false;
-            return true;
+
+            // Determine available order types
+            final availableTypes = <OrderType>[];
+            if (config.plateNumberRequired) availableTypes.add(OrderType.carPlate);
+            if (config.addressRequired) availableTypes.add(OrderType.delivery);
+            if (config.tableRequired) availableTypes.add(OrderType.dineIn);
+
+            // If multiple types available and none selected, button disabled
+            if (availableTypes.length > 1 && selectedType == null) return false;
+
+            // If only one type available, use it (selectedType might be null)
+            final effectiveType = selectedType ?? (availableTypes.length == 1 ? availableTypes.first : null);
+
+            // If no type determined, disable button
+            if (effectiveType == null) return false;
+
+            // Validate ONLY the field required for the selected type
+            switch (effectiveType) {
+              case OrderType.carPlate:
+                return _checkoutData.carPlate.isNotEmpty;
+              case OrderType.delivery:
+                return _checkoutData.address != null && _checkoutData.address!.isValid;
+              case OrderType.dineIn:
+                return _checkoutData.table != null && _checkoutData.table!.isNotEmpty;
+            }
           },
           loading: () => false,
-          error: (_, __) => _checkoutData.phone.isNotEmpty && _checkoutData.carPlate.isNotEmpty, // Fallback to old behavior
+          error: (_, __) => false, // Disable button on error
         );
 
         final isReadyToConfirm = hasMinimumInfo && lines.isNotEmpty;

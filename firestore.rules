@@ -46,27 +46,36 @@ service cloud.firestore {
       };
     }
 
-    // Validate required checkout fields based on config
+    // Validate required checkout fields based on fulfillmentType
     function hasRequiredCheckoutFields(merchantId, branchId, orderData) {
-      let config = getCheckoutConfig(merchantId, branchId);
-      return (
-        // If phone required, must be present
-        (!config.phoneRequired || (orderData.keys().hasAny(['customerPhone']) && orderData.customerPhone is string && orderData.customerPhone.size() > 0)) &&
-        // If plate required, must be present
-        (!config.plateNumberRequired || (orderData.keys().hasAny(['customerCarPlate']) && orderData.customerCarPlate is string && orderData.customerCarPlate.size() > 0)) &&
-        // If table required, must be present
-        (!config.tableRequired || (orderData.keys().hasAny(['table']) && orderData.table is string && orderData.table.size() > 0)) &&
-        // If address required, must be present with required fields (home, road, block, city)
-        (!config.addressRequired || (
-          orderData.keys().hasAny(['customerAddress']) &&
-          orderData.customerAddress is map &&
-          orderData.customerAddress.keys().hasAny(['home', 'road', 'block', 'city']) &&
-          orderData.customerAddress.home is string && orderData.customerAddress.home.size() > 0 &&
-          orderData.customerAddress.road is string && orderData.customerAddress.road.size() > 0 &&
-          orderData.customerAddress.block is string && orderData.customerAddress.block.size() > 0 &&
-          orderData.customerAddress.city is string && orderData.customerAddress.city.size() > 0
-        ))
-      );
+      // fulfillmentType is REQUIRED for all new orders
+      let hasFulfillmentType = orderData.keys().hasAny(['fulfillmentType']) &&
+        orderData.fulfillmentType is string &&
+        orderData.fulfillmentType in ['car_pickup', 'delivery', 'dine_in'];
+
+      // Validate type-specific required fields
+      let hasTypeSpecificFields =
+        // Car pickup requires customerCarPlate
+        (orderData.fulfillmentType == 'car_pickup' &&
+         orderData.keys().hasAny(['customerCarPlate']) &&
+         orderData.customerCarPlate is string &&
+         orderData.customerCarPlate.size() > 0) ||
+        // Delivery requires customerAddress with required fields
+        (orderData.fulfillmentType == 'delivery' &&
+         orderData.keys().hasAny(['customerAddress']) &&
+         orderData.customerAddress is map &&
+         orderData.customerAddress.keys().hasAny(['home', 'road', 'block', 'city']) &&
+         orderData.customerAddress.home is string && orderData.customerAddress.home.size() > 0 &&
+         orderData.customerAddress.road is string && orderData.customerAddress.road.size() > 0 &&
+         orderData.customerAddress.block is string && orderData.customerAddress.block.size() > 0 &&
+         orderData.customerAddress.city is string && orderData.customerAddress.city.size() > 0) ||
+        // Dine-in requires table
+        (orderData.fulfillmentType == 'dine_in' &&
+         orderData.keys().hasAny(['table']) &&
+         orderData.table is string &&
+         orderData.table.size() > 0);
+
+      return hasFulfillmentType && hasTypeSpecificFields;
     }
 
     // ==================== GLOBAL COLLECTIONS ====================
@@ -177,14 +186,16 @@ service cloud.firestore {
             request.resource.data.createdAt == resource.data.createdAt &&
             request.resource.data.orderNo == resource.data.orderNo &&
             // Staff cannot change notifications (reserved for service account)
-            request.resource.data.notifications == resource.data.notifications &&
+            // BACKWARD COMPATIBLE: Old orders may not have notifications field
+            (!resource.data.keys().hasAny(['notifications']) || request.resource.data.notifications == resource.data.notifications) &&
+            // Immutable: fulfillmentType cannot be changed (if present)
+            (!resource.data.keys().hasAny(['fulfillmentType']) || request.resource.data.fulfillmentType == resource.data.fulfillmentType) &&
             // Optional immutable fields (if they exist, they cannot be changed)
             (!resource.data.keys().hasAny(['customerPhone']) || request.resource.data.customerPhone == resource.data.customerPhone) &&
             (!resource.data.keys().hasAny(['customerCarPlate']) || request.resource.data.customerCarPlate == resource.data.customerCarPlate) &&
             (!resource.data.keys().hasAny(['table']) || request.resource.data.table == resource.data.table) &&
             (!resource.data.keys().hasAny(['loyaltyDiscount']) || request.resource.data.loyaltyDiscount == resource.data.loyaltyDiscount) &&
             (!resource.data.keys().hasAny(['loyaltyPointsUsed']) || request.resource.data.loyaltyPointsUsed == resource.data.loyaltyPointsUsed) &&
-            // NEW: Additional checkout fields (immutable if present)
             (!resource.data.keys().hasAny(['customerAddress']) || request.resource.data.customerAddress == resource.data.customerAddress) &&
             // Status field: Must be valid order status
             request.resource.data.status in ['pending', 'accepted', 'preparing', 'ready', 'served', 'cancelled'] &&
@@ -207,9 +218,19 @@ service cloud.firestore {
             // Audit logging: updatedByRole must be valid if present
             (!request.resource.data.keys().hasAny(['updatedByRole']) ||
              request.resource.data.updatedByRole in ['admin', 'staff']) &&
+            // Audit logging: updatedByEmail is optional
+            (!request.resource.data.keys().hasAny(['updatedByEmail']) ||
+             request.resource.data.updatedByEmail is string) &&
+            // Status-specific timestamps (optional, set by code)
+            (!request.resource.data.keys().hasAny(['preparingAt']) || request.resource.data.preparingAt is timestamp) &&
+            (!request.resource.data.keys().hasAny(['readyAt']) || request.resource.data.readyAt is timestamp) &&
+            (!request.resource.data.keys().hasAny(['servedAt']) || request.resource.data.servedAt is timestamp) &&
+            (!request.resource.data.keys().hasAny(['cancelledAt']) || request.resource.data.cancelledAt is timestamp) &&
             // Cancellation reason: Only when status is cancelled
             (!request.resource.data.keys().hasAny(['cancellationReason']) ||
-             request.resource.data.status == 'cancelled');
+             request.resource.data.status == 'cancelled') &&
+            // updatedAt is always required for updates
+            request.resource.data.updatedAt is timestamp;
 
           // No deletes (preserve order history)
           allow delete: if false;
@@ -262,11 +283,12 @@ service cloud.firestore {
           allow read: if isSignedIn();
 
           // CREATE: Allow creating customer profiles during checkout
-          // carPlate is required (for restaurant to identify which car to serve)
+          // carPlate is optional (only for car pickup orders)
           allow create: if isSignedIn() &&
             request.resource.data.phone == phone &&
-            request.resource.data.carPlate is string &&
-            request.resource.data.carPlate.size() > 0 &&
+            // carPlate is optional, but if present must be valid
+            (!request.resource.data.keys().hasAny(['carPlate']) ||
+             (request.resource.data.carPlate is string && request.resource.data.carPlate.size() > 0)) &&
             request.resource.data.points is int &&
             request.resource.data.points >= 0 &&
             request.resource.data.totalSpent is number &&
@@ -279,8 +301,9 @@ service cloud.firestore {
           // UPDATE: Allow updating customer profiles (points, spending, etc.)
           allow update: if isSignedIn() &&
             request.resource.data.phone == resource.data.phone &&  // Can't change phone
-            request.resource.data.carPlate is string &&
-            request.resource.data.carPlate.size() > 0 &&
+            // carPlate is optional, but if present must be valid
+            (!request.resource.data.keys().hasAny(['carPlate']) ||
+             (request.resource.data.carPlate is string && request.resource.data.carPlate.size() > 0)) &&
             request.resource.data.points is int &&
             request.resource.data.points >= 0 &&
             request.resource.data.totalSpent is number &&
