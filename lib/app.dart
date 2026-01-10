@@ -1,4 +1,5 @@
 // lib/app.dart - CUSTOMER APP (URL PRESERVED)
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,7 +13,8 @@ import 'features/sweets/widgets/sweets_viewport.dart';
 import 'features/cart/widgets/cart_sheet.dart';
 import 'features/cart/state/cart_controller.dart'; // for live cart count
 import 'features/orders/widgets/active_orders_sheet.dart';
-import 'features/orders/data/active_orders_service.dart' show activeOrdersCountProvider;
+import 'features/orders/data/active_orders_service.dart'
+    show activeOrdersCountProvider, activeOrdersServiceProvider;
 
 class SweetsApp extends ConsumerStatefulWidget {
   const SweetsApp({super.key});
@@ -48,15 +50,17 @@ class _SweetsAppState extends ConsumerState<SweetsApp> {
     final baseTheme = ref.watch(themeDataProvider);
 
     // branding (for title + colors)
-    final branding = ref.watch(brandingProvider).maybeWhen(
-      data: (b) => b,
-      orElse: () => const Branding(
-        title: 'App',
-        headerText: '',
-        primaryHex: '#FFFFFF',
-        secondaryHex: '#000000',
-      ),
-    );
+    final branding = ref
+        .watch(brandingProvider)
+        .maybeWhen(
+          data: (b) => b,
+          orElse: () => const Branding(
+            title: 'App',
+            headerText: '',
+            primaryHex: '#FFFFFF',
+            secondaryHex: '#000000',
+          ),
+        );
     final primary = _hexToColor(branding.primaryHex); // BG color ONLY
     final secondary = _hexToColor(branding.secondaryHex); // TEXT color ONLY
 
@@ -64,10 +68,12 @@ class _SweetsAppState extends ConsumerState<SweetsApp> {
     final overlay = (primary.computeLuminance() > 0.5)
         ? SystemUiOverlayStyle.dark
         : SystemUiOverlayStyle.light;
-    SystemChrome.setSystemUIOverlayStyle(overlay.copyWith(
-      statusBarColor: Colors.transparent,
-      systemNavigationBarColor: Colors.transparent,
-    ));
+    SystemChrome.setSystemUIOverlayStyle(
+      overlay.copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.transparent,
+      ),
+    );
 
     // global theme: solid background = primary, fonts = secondary, bar = transparent
     final theme = baseTheme.copyWith(
@@ -97,10 +103,15 @@ class _SweetsAppState extends ConsumerState<SweetsApp> {
       title: branding.title,
       debugShowCheckedModeBanner: false,
       theme: theme,
-      onGenerateRoute: (settings) => MaterialPageRoute(
-        settings: settings,
-        builder: (_) => _idsApplied ? const _CustomerScaffold() : const _WaitingOrError(),
-      ),
+      initialRoute: '/',
+      onGenerateRoute: (settings) {
+        // Preserve the original route name (e.g., /s/aziz-burgers)
+        return MaterialPageRoute(
+          settings: settings,
+          builder: (_) =>
+              _idsApplied ? const _CustomerScaffold() : const _WaitingOrError(),
+        );
+      },
     );
   }
 }
@@ -115,6 +126,56 @@ class _CustomerScaffold extends ConsumerStatefulWidget {
 class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
   // Shared with SweetsViewport for fly-to-cart target
   final GlobalKey _cartActionKey = GlobalKey();
+
+  bool _hadPersistedActiveOrdersAtLaunch = false;
+  bool _autoOpenedActiveOrders = false;
+
+  ProviderSubscription? _activeOrdersServiceSub;
+  ProviderSubscription<int>? _activeOrdersCountSub;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Best-effort immediate check (works if prefs are already loaded).
+    _hadPersistedActiveOrdersAtLaunch =
+        ref.read(activeOrdersServiceProvider)?.getStoredOrderIds().isNotEmpty ??
+        false;
+
+    // Determine whether this session started with persisted active orders.
+    // This gates the "auto-open" behavior to refresh/cold-start only.
+    _activeOrdersServiceSub = ref.listenManual(activeOrdersServiceProvider, (
+      prev,
+      next,
+    ) {
+      if (prev == null && next != null) {
+        _hadPersistedActiveOrdersAtLaunch = next.getStoredOrderIds().isNotEmpty;
+      }
+    }, fireImmediately: true);
+
+    // Auto-open Active Orders sheet once after refresh/cold-start.
+    _activeOrdersCountSub = ref.listenManual<int>(activeOrdersCountProvider, (
+      prev,
+      next,
+    ) {
+      if (_autoOpenedActiveOrders) return;
+      if (!_hadPersistedActiveOrdersAtLaunch) return;
+      if (next <= 0) return;
+
+      _autoOpenedActiveOrders = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _openActiveOrdersSheet(context);
+      });
+    }, fireImmediately: true);
+  }
+
+  @override
+  void dispose() {
+    _activeOrdersServiceSub?.close();
+    _activeOrdersCountSub?.close();
+    super.dispose();
+  }
 
   void _openCartSheet(BuildContext context) {
     showModalBottomSheet(
@@ -144,21 +205,28 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    final b = ref.watch(brandingProvider).maybeWhen(
-      data: (x) => x,
-      orElse: () => const Branding(
-        title: 'App',
-        headerText: '',
-        primaryHex: '#FFFFFF',
-        secondaryHex: '#000000',
-      ),
-    );
+    final b = ref
+        .watch(brandingProvider)
+        .maybeWhen(
+          data: (x) => x,
+          orElse: () => const Branding(
+            title: 'App',
+            headerText: '',
+            primaryHex: '#FFFFFF',
+            secondaryHex: '#000000',
+          ),
+        );
 
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final cartCount = ref.watch(
       cartControllerProvider.select((c) => c.totalCount),
     );
     final activeOrdersCount = ref.watch(activeOrdersCountProvider);
+
+    // Debug: log active orders count
+    if (activeOrdersCount > 0) {
+      debugPrint('[CustomerScaffold] Active orders count: $activeOrdersCount');
+    }
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -172,43 +240,74 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: Stack(
-              clipBehavior: Clip.none,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                OutlinedButton(
-                  key: _cartActionKey, // key shared with SweetsViewport
-                  style: OutlinedButton.styleFrom(
-                    shape: const CircleBorder(),
-                    side: BorderSide(color: onSurface),
-                    minimumSize: const Size(40, 40),
-                    padding: EdgeInsets.zero,
-                    foregroundColor: onSurface, // icon color
-                  ),
-                  onPressed: () => _openCartSheet(context),
-                  child: const Icon(Icons.shopping_bag_outlined, size: 18),
-                ),
-                if (cartCount > 0)
-                  Positioned(
-                    right: -2,
-                    top: -2,
-                    child: IgnorePointer(
-                      ignoring: true, // allow taps to hit the button
-                      child: _CartCountBadge(count: cartCount, onSurface: onSurface),
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    OutlinedButton(
+                      key: _cartActionKey, // key shared with SweetsViewport
+                      style: OutlinedButton.styleFrom(
+                        shape: const CircleBorder(),
+                        side: BorderSide(color: onSurface),
+                        minimumSize: const Size(40, 40),
+                        padding: EdgeInsets.zero,
+                        foregroundColor: onSurface, // icon color
+                      ),
+                      onPressed: () => _openCartSheet(context),
+                      child: const Icon(Icons.shopping_bag_outlined, size: 18),
                     ),
+                    if (cartCount > 0)
+                      Positioned(
+                        right: -2,
+                        top: -2,
+                        child: IgnorePointer(
+                          ignoring: true, // allow taps to hit the button
+                          child: _CartCountBadge(
+                            count: cartCount,
+                            onSurface: onSurface,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                if (activeOrdersCount > 0) ...[
+                  const SizedBox(height: 8),
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          shape: const CircleBorder(),
+                          side: BorderSide(color: onSurface),
+                          minimumSize: const Size(40, 40),
+                          padding: EdgeInsets.zero,
+                          foregroundColor: onSurface,
+                        ),
+                        onPressed: () => _openActiveOrdersSheet(context),
+                        child: const Icon(Icons.receipt_long, size: 18),
+                      ),
+                      Positioned(
+                        right: -2,
+                        top: -2,
+                        child: IgnorePointer(
+                          ignoring: true,
+                          child: _CartCountBadge(
+                            count: activeOrdersCount,
+                            onSurface: onSurface,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
+                ],
               ],
             ),
           ),
         ],
       ),
       body: SweetsViewport(cartBadgeKey: _cartActionKey),
-      floatingActionButton: activeOrdersCount > 0
-          ? _ActiveOrdersButton(
-              count: activeOrdersCount,
-              onPressed: () => _openActiveOrdersSheet(context),
-            )
-          : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 }
@@ -233,7 +332,8 @@ class _WaitingOrError extends ConsumerWidget {
         error: (e, _) => '❌ Error: $e',
       );
     } else {
-      message = '⚠️ No merchant specified.\n\nOpen with:\n'
+      message =
+          '⚠️ No merchant specified.\n\nOpen with:\n'
           '• /s/<slug>\n'
           '• ?m=<merchantId>&b=<branchId>';
     }
@@ -249,9 +349,17 @@ class _WaitingOrError extends ConsumerWidget {
               if (async.isLoading)
                 const CircularProgressIndicator()
               else
-                const Icon(Icons.store_outlined, size: 64, color: Colors.black26),
+                const Icon(
+                  Icons.store_outlined,
+                  size: 64,
+                  color: Colors.black26,
+                ),
               const SizedBox(height: 24),
-              Text(message, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16),
+              ),
             ],
           ),
         ),
@@ -281,80 +389,6 @@ class _CartCountBadge extends StatelessWidget {
           color: onSurface, // secondary/onSurface
           fontSize: 10,
           fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-}
-
-class _ActiveOrdersButton extends StatelessWidget {
-  final int count;
-  final VoidCallback onPressed;
-
-  const _ActiveOrdersButton({
-    required this.count,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.15),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Material(
-        color: cs.primary,
-        borderRadius: BorderRadius.circular(24),
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(24),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.receipt_long,
-                  color: cs.onPrimary,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Active Orders',
-                  style: TextStyle(
-                    color: cs.onPrimary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: cs.onPrimary,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    count.toString(),
-                    style: TextStyle(
-                      color: cs.primary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
         ),
       ),
     );

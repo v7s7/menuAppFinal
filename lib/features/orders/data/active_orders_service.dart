@@ -2,9 +2,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 import 'order_models.dart' as om;
 import '../../../core/config/slug_routing.dart' show effectiveIdsProvider;
+import '../../../core/models/bahrain_address.dart';
 
 /// Service for managing active orders with local storage persistence
 class ActiveOrdersService {
@@ -20,9 +22,9 @@ class ActiveOrdersService {
     required SharedPreferences prefs,
     required FirebaseFirestore firestore,
     required FirebaseAuth auth,
-  })  : _prefs = prefs,
-        _firestore = firestore,
-        _auth = auth;
+  }) : _prefs = prefs,
+       _firestore = firestore,
+       _auth = auth;
 
   /// Get storage key for current user
   String get _userKey {
@@ -68,6 +70,39 @@ class ActiveOrdersService {
     await _prefs.remove(_userKey);
   }
 
+  om.OrderStatus _statusFromFirestore(String s) {
+    switch (s) {
+      case 'pending':
+        return om.OrderStatus.pending;
+      case 'accepted':
+        return om.OrderStatus.accepted;
+      case 'preparing':
+        return om.OrderStatus.preparing;
+      case 'ready':
+        return om.OrderStatus.ready;
+      case 'served':
+        return om.OrderStatus.served;
+      case 'cancelled':
+        return om.OrderStatus.cancelled;
+      default:
+        return om.OrderStatus.pending;
+    }
+  }
+
+  DateTime? _tsToDate(dynamic v) {
+    if (v == null) return null;
+    if (v is Timestamp) return v.toDate();
+    return null;
+  }
+
+  BahrainAddress? _addressFromAny(dynamic v) {
+    if (v == null) return null;
+    if (v is BahrainAddress) return v;
+    if (v is Map<String, dynamic>) return BahrainAddress.fromMap(v);
+    if (v is Map) return BahrainAddress.fromMap(Map<String, dynamic>.from(v));
+    return null;
+  }
+
   /// Watch active orders from Firestore
   /// Only returns orders that are in active states (pending, accepted, preparing, ready)
   Stream<List<om.Order>> watchActiveOrders(String merchantId, String branchId) {
@@ -87,81 +122,63 @@ class ActiveOrdersService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        final data = doc.data();
+          return snapshot.docs.map<om.Order>((doc) {
+            final data = doc.data();
 
-        // Parse fulfillment type with backward compatibility
-        om.FulfillmentType fulfillmentType;
-        final fulfillmentTypeStr = data['fulfillmentType'] as String?;
-        if (fulfillmentTypeStr != null && fulfillmentTypeStr.isNotEmpty) {
-          fulfillmentType = om.FulfillmentTypeX.fromFirestore(fulfillmentTypeStr);
-        } else {
-          // Infer from existing fields for old orders
-          final address = data['customerAddress'] as Map<String, dynamic>?;
-          final carPlate = data['customerCarPlate'] as String?;
-          if (address != null) {
-            fulfillmentType = om.FulfillmentType.delivery;
-          } else if (carPlate != null) {
-            fulfillmentType = om.FulfillmentType.carPickup;
-          } else {
-            fulfillmentType = om.FulfillmentType.dineIn;
-          }
-        }
+            // Parse fulfillment type with backward compatibility
+            om.FulfillmentType fulfillmentType;
+            final fulfillmentTypeStr = data['fulfillmentType'] as String?;
+            if (fulfillmentTypeStr != null && fulfillmentTypeStr.isNotEmpty) {
+              fulfillmentType = om.FulfillmentTypeX.fromFirestore(
+                fulfillmentTypeStr,
+              );
+            } else {
+              final address = data['customerAddress'];
+              final carPlate = data['customerCarPlate'] as String?;
+              if (address != null) {
+                fulfillmentType = om.FulfillmentType.delivery;
+              } else if (carPlate != null) {
+                fulfillmentType = om.FulfillmentType.carPickup;
+              } else {
+                fulfillmentType = om.FulfillmentType.dineIn;
+              }
+            }
 
-        // Parse order items
-        final itemsList = data['items'] as List<dynamic>;
-        final items = itemsList.map((item) {
-          final itemMap = item as Map<String, dynamic>;
-          return om.OrderItem(
-            productId: itemMap['productId'] as String,
-            name: itemMap['name'] as String,
-            price: (itemMap['price'] as num).toDouble(),
-            qty: itemMap['qty'] as int,
-            note: itemMap['note'] as String?,
-          );
-        }).toList();
+            // Parse order items
+            final itemsList = (data['items'] as List?) ?? const <dynamic>[];
+            final items = itemsList.map<om.OrderItem>((item) {
+              final itemMap = Map<String, dynamic>.from(item as Map);
+              return om.OrderItem(
+                productId: (itemMap['productId'] ?? '').toString(),
+                name: (itemMap['name'] ?? '').toString(),
+                price: (itemMap['price'] as num?)?.toDouble() ?? 0.0,
+                qty: (itemMap['qty'] as int?) ?? 1,
+                note: itemMap['note'] as String?,
+              );
+            }).toList();
 
-        return om.Order(
-          orderId: doc.id,
-          orderNo: data['orderNo'] as String,
-          userId: data['userId'] as String,
-          merchantId: data['merchantId'] as String,
-          branchId: data['branchId'] as String,
-          status: om.OrderStatusX.fromFirestore(data['status'] as String),
-          items: items,
-          subtotal: (data['subtotal'] as num).toDouble(),
-          createdAt: (data['createdAt'] as Timestamp).toDate(),
-          updatedAt: data['updatedAt'] != null
-              ? (data['updatedAt'] as Timestamp).toDate()
-              : (data['createdAt'] as Timestamp).toDate(),
-          fulfillmentType: fulfillmentType,
-          table: data['table'] as String?,
-          customerPhone: data['customerPhone'] as String?,
-          customerCarPlate: data['customerCarPlate'] as String?,
-          customerAddress: data['customerAddress'] as Map<String, dynamic>?,
-          loyaltyDiscount: data['loyaltyDiscount'] != null
-              ? (data['loyaltyDiscount'] as num).toDouble()
-              : null,
-          loyaltyPointsUsed: data['loyaltyPointsUsed'] as int?,
-          acceptedAt: data['acceptedAt'] != null
-              ? (data['acceptedAt'] as Timestamp).toDate()
-              : null,
-          preparingAt: data['preparingAt'] != null
-              ? (data['preparingAt'] as Timestamp).toDate()
-              : null,
-          readyAt: data['readyAt'] != null
-              ? (data['readyAt'] as Timestamp).toDate()
-              : null,
-          servedAt: data['servedAt'] != null
-              ? (data['servedAt'] as Timestamp).toDate()
-              : null,
-          cancelledAt: data['cancelledAt'] != null
-              ? (data['cancelledAt'] as Timestamp).toDate()
-              : null,
-          cancellationReason: data['cancellationReason'] as String?,
-        );
-      }).toList();
-    });
+            final createdAt = _tsToDate(data['createdAt']) ?? DateTime.now();
+
+            return om.Order(
+              orderId: doc.id,
+              orderNo: (data['orderNo'] ?? '').toString(),
+              status: _statusFromFirestore(
+                (data['status'] ?? 'pending').toString(),
+              ),
+              items: items,
+              subtotal: (data['subtotal'] as num?)?.toDouble() ?? 0.0,
+              createdAt: createdAt,
+              fulfillmentType: fulfillmentType,
+              table: data['table'] as String?,
+              customerPhone: data['customerPhone'] as String?,
+              customerCarPlate: data['customerCarPlate'] as String?,
+              customerAddress: _addressFromAny(data['customerAddress']),
+              loyaltyDiscount: (data['loyaltyDiscount'] as num?)?.toDouble(),
+              loyaltyPointsUsed: data['loyaltyPointsUsed'] as int?,
+              cancellationReason: data['cancellationReason'] as String?,
+            );
+          }).toList();
+        });
   }
 
   /// Sync local storage with current active orders
@@ -173,7 +190,9 @@ class ActiveOrdersService {
 }
 
 /// Provider for SharedPreferences instance
-final sharedPreferencesProvider = FutureProvider<SharedPreferences>((ref) async {
+final sharedPreferencesProvider = FutureProvider<SharedPreferences>((
+  ref,
+) async {
   return await SharedPreferences.getInstance();
 });
 
@@ -188,7 +207,7 @@ final activeOrdersServiceProvider = Provider<ActiveOrdersService?>((ref) {
       auth: FirebaseAuth.instance,
     ),
     loading: () => null,
-    error: (_, __) => null,
+    error: (error, stackTrace) => null,
   );
 });
 
@@ -196,22 +215,27 @@ final activeOrdersServiceProvider = Provider<ActiveOrdersService?>((ref) {
 /// Returns list of orders in active states (pending, accepted, preparing, ready)
 /// Syncs with local storage for persistence across refreshes
 final activeOrdersStreamProvider = StreamProvider<List<om.Order>>((ref) {
-  // Import effectiveIdsProvider from slug_routing.dart
-  // We'll add the import at the top of the file
   final ids = ref.watch(effectiveIdsProvider);
   final service = ref.watch(activeOrdersServiceProvider);
 
-  // If IDs not available or service not ready, return empty stream
+  debugPrint(
+    '[ActiveOrders] Provider called - ids: $ids, service: ${service != null}',
+  );
+
   if (ids == null || service == null) {
+    debugPrint(
+      '[ActiveOrders] Returning empty stream - missing ids or service',
+    );
     return Stream.value([]);
   }
 
-  // Store context for this session
   service.setContext(ids.merchantId, ids.branchId);
+  debugPrint(
+    '[ActiveOrders] Watching orders for merchant=${ids.merchantId} branch=${ids.branchId}',
+  );
 
-  // Watch active orders and sync with local storage
   return service.watchActiveOrders(ids.merchantId, ids.branchId).map((orders) {
-    // Sync local storage with current active orders
+    debugPrint('[ActiveOrders] Received ${orders.length} active orders');
     service.syncWithFirestore(orders);
     return orders;
   });
@@ -220,8 +244,19 @@ final activeOrdersStreamProvider = StreamProvider<List<om.Order>>((ref) {
 /// Provider for active orders count (for badge display)
 final activeOrdersCountProvider = Provider<int>((ref) {
   final ordersAsync = ref.watch(activeOrdersStreamProvider);
-  return ordersAsync.maybeWhen(
-    data: (orders) => orders.length,
-    orElse: () => 0,
+  final service = ref.watch(activeOrdersServiceProvider);
+  
+  // Show persisted count immediately while stream loads
+  final persistedCount = service?.getStoredOrderIds().length ?? 0;
+  
+  final streamCount = ordersAsync.maybeWhen(
+    data: (orders) {
+      debugPrint('[ActiveOrdersCount] Stream has ${orders.length} orders');
+      return orders.length;
+    },
+    orElse: () => persistedCount,
   );
+  
+  debugPrint('[ActiveOrdersCount] Returning count: $streamCount (persisted: $persistedCount)');
+  return streamCount;
 });

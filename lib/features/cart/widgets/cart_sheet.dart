@@ -8,7 +8,8 @@ import '../state/cart_controller.dart';
 
 import '../../orders/data/order_models.dart' show OrderItem, FulfillmentType;
 import '../../orders/data/order_service.dart';
-import '../../orders/data/active_orders_service.dart' show activeOrdersServiceProvider;
+import '../../orders/data/active_orders_service.dart'
+    show activeOrdersServiceProvider;
 import '../../orders/screens/order_status_page.dart';
 
 import '../../../core/config/app_config.dart';
@@ -35,7 +36,11 @@ class _CartSheetState extends ConsumerState<CartSheet> {
     discount: 0,
   );
 
-  Future<void> _confirmOrder(BuildContext context, List<CartLine> lines, double subtotal) async {
+  Future<void> _confirmOrder(
+    BuildContext context,
+    List<CartLine> lines,
+    double subtotal,
+  ) async {
     try {
       // Get checkout fields configuration
       final checkoutFieldsService = ref.read(checkoutFieldsServiceProvider);
@@ -75,7 +80,8 @@ class _CartSheetState extends ConsumerState<CartSheet> {
       }
 
       // Validate based on selected order type
-      if (selectedType == OrderType.carPlate && _checkoutData.carPlate.isEmpty) {
+      if (selectedType == OrderType.carPlate &&
+          _checkoutData.carPlate.isEmpty) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -86,7 +92,8 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         }
         return;
       }
-      if (selectedType == OrderType.dineIn && (_checkoutData.table == null || _checkoutData.table!.isEmpty)) {
+      if (selectedType == OrderType.dineIn &&
+          (_checkoutData.table == null || _checkoutData.table!.isEmpty)) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -97,11 +104,14 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         }
         return;
       }
-      if (selectedType == OrderType.delivery && (_checkoutData.address == null || !_checkoutData.address!.isValid)) {
+      if (selectedType == OrderType.delivery &&
+          (_checkoutData.address == null || !_checkoutData.address!.isValid)) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Please enter your complete address (Home, Road, Block, City)'),
+              content: Text(
+                'Please enter your complete address (Home, Road, Block, City)',
+              ),
               backgroundColor: Colors.orange,
             ),
           );
@@ -110,17 +120,21 @@ class _CartSheetState extends ConsumerState<CartSheet> {
       }
 
       // Get loyalty settings to check if we need to process loyalty
-      final loyaltySettings = await ref.read(loyaltyServiceProvider).getLoyaltySettings();
+      final loyaltySettings = await ref
+          .read(loyaltyServiceProvider)
+          .getLoyaltySettings();
 
       // Create order items
       final items = lines
-          .map((l) => OrderItem(
-                productId: l.sweet.id,
-                name: l.sweet.name,
-                price: l.sweet.price,
-                qty: l.qty,
-                note: l.note,
-              ))
+          .map(
+            (l) => OrderItem(
+              productId: l.sweet.id,
+              name: l.sweet.name,
+              price: l.sweet.price,
+              qty: l.qty,
+              note: l.note,
+            ),
+          )
           .toList();
 
       final cfg = ref.read(appConfigProvider);
@@ -128,7 +142,9 @@ class _CartSheetState extends ConsumerState<CartSheet> {
       final manualTable = config.tableRequired ? _checkoutData.table : null;
 
       // Effective table: QR takes precedence, otherwise use manual entry
-      final effectiveTable = (qrTable != null && qrTable.isNotEmpty) ? qrTable : manualTable;
+      final effectiveTable = (qrTable != null && qrTable.isNotEmpty)
+          ? qrTable
+          : manualTable;
 
       // Convert OrderType to FulfillmentType
       FulfillmentType fulfillmentType;
@@ -172,8 +188,12 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         table: orderTable,
         customerPhone: config.phoneRequired ? _checkoutData.phone : null,
         customerCarPlate: orderCarPlate,
-        loyaltyDiscount: loyaltySettings.enabled ? _checkoutData.discount : null,
-        loyaltyPointsUsed: loyaltySettings.enabled ? _checkoutData.pointsToUse : null,
+        loyaltyDiscount: loyaltySettings.enabled
+            ? _checkoutData.discount
+            : null,
+        loyaltyPointsUsed: loyaltySettings.enabled
+            ? _checkoutData.pointsToUse
+            : null,
         customerAddress: orderAddress,
       );
 
@@ -189,7 +209,9 @@ class _CartSheetState extends ConsumerState<CartSheet> {
       }
 
       // Redeem points (if using points for discount)
-      if (loyaltySettings.enabled && _checkoutData.pointsToUse > 0 && _checkoutData.phone.isNotEmpty) {
+      if (loyaltySettings.enabled &&
+          _checkoutData.pointsToUse > 0 &&
+          _checkoutData.phone.isNotEmpty) {
         final loyaltyService = ref.read(loyaltyServiceProvider);
         try {
           await loyaltyService.redeemPoints(
@@ -210,9 +232,17 @@ class _CartSheetState extends ConsumerState<CartSheet> {
 
       // Navigate to order status
       if (context.mounted) {
+        final preservedLocation =
+            (cfg.slug != null && cfg.slug!.trim().isNotEmpty)
+            ? '/s/${cfg.slug!.trim()}'
+            : null;
+
         Navigator.of(context).maybePop();
         Navigator.of(context).push(
           MaterialPageRoute(
+            settings: preservedLocation == null
+                ? null
+                : RouteSettings(name: preservedLocation),
             builder: (_) => OrderStatusPage(orderId: order.orderId),
           ),
         );
@@ -313,18 +343,21 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         final hasMinimumInfo = configAsync.when(
           data: (config) {
             // Check phone if required (applies to all types)
-            if (config.phoneRequired && _checkoutData.phone.isEmpty) return false;
+            if (config.phoneRequired && _checkoutData.phone.isEmpty)
+              return false;
 
             // Determine available order types
             final availableTypes = <OrderType>[];
-            if (config.plateNumberRequired) availableTypes.add(OrderType.carPlate);
+            if (config.plateNumberRequired)
+              availableTypes.add(OrderType.carPlate);
             if (config.addressRequired) availableTypes.add(OrderType.delivery);
             if (config.tableRequired) availableTypes.add(OrderType.dineIn);
 
             // Auto-select if only one type available
             if (availableTypes.length == 1 && selectedType == null) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                ref.read(selectedOrderTypeProvider.notifier).state = availableTypes.first;
+                ref.read(selectedOrderTypeProvider.notifier).state =
+                    availableTypes.first;
               });
               return false; // Button disabled until next frame when selection is set
             }
@@ -340,9 +373,11 @@ class _CartSheetState extends ConsumerState<CartSheet> {
               case OrderType.carPlate:
                 return _checkoutData.carPlate.isNotEmpty;
               case OrderType.delivery:
-                return _checkoutData.address != null && _checkoutData.address!.isValid;
+                return _checkoutData.address != null &&
+                    _checkoutData.address!.isValid;
               case OrderType.dineIn:
-                return _checkoutData.table != null && _checkoutData.table!.isNotEmpty;
+                return _checkoutData.table != null &&
+                    _checkoutData.table!.isNotEmpty;
             }
           },
           loading: () => false,
@@ -355,22 +390,38 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         final ButtonStyle _confirmStyle = isReadyToConfirm
             ? ButtonStyle(
                 foregroundColor: const MaterialStatePropertyAll(Colors.white),
-                backgroundColor: const MaterialStatePropertyAll(Color(0xFF22C55E)), // Green
+                backgroundColor: const MaterialStatePropertyAll(
+                  Color(0xFF22C55E),
+                ), // Green
                 elevation: const MaterialStatePropertyAll(2),
-                minimumSize: const MaterialStatePropertyAll(Size.fromHeight(48)),
+                minimumSize: const MaterialStatePropertyAll(
+                  Size.fromHeight(48),
+                ),
                 shape: MaterialStatePropertyAll(
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               )
             : ButtonStyle(
-                foregroundColor: MaterialStatePropertyAll(onSurface.withOpacity(0.38)),
-                backgroundColor: MaterialStatePropertyAll(onSurface.withOpacity(0.12)),
-                overlayColor: const MaterialStatePropertyAll(Colors.transparent),
+                foregroundColor: MaterialStatePropertyAll(
+                  onSurface.withOpacity(0.38),
+                ),
+                backgroundColor: MaterialStatePropertyAll(
+                  onSurface.withOpacity(0.12),
+                ),
+                overlayColor: const MaterialStatePropertyAll(
+                  Colors.transparent,
+                ),
                 shadowColor: const MaterialStatePropertyAll(Colors.transparent),
                 elevation: const MaterialStatePropertyAll(0),
-                minimumSize: const MaterialStatePropertyAll(Size.fromHeight(48)),
+                minimumSize: const MaterialStatePropertyAll(
+                  Size.fromHeight(48),
+                ),
                 shape: MaterialStatePropertyAll(
-                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               );
 
@@ -394,7 +445,10 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                   children: [
                     const Text(
                       'Your Order',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const Spacer(),
                     Text(
@@ -411,11 +465,16 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.shopping_bag_outlined,
-                            size: 24, color: onSurface.withOpacity(0.5)),
+                        Icon(
+                          Icons.shopping_bag_outlined,
+                          size: 24,
+                          color: onSurface.withOpacity(0.5),
+                        ),
                         const SizedBox(width: 8),
-                        Text('Cart is empty',
-                            style: TextStyle(color: onSurface.withOpacity(0.6))),
+                        Text(
+                          'Cart is empty',
+                          style: TextStyle(color: onSurface.withOpacity(0.6)),
+                        ),
                       ],
                     ),
                   )
@@ -446,7 +505,10 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                   children: [
                     const Text(
                       'Subtotal',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
                     ),
                     const Spacer(),
                     Text(
@@ -467,7 +529,11 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                     children: [
                       const Text(
                         'Points Discount',
-                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.blue),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                          color: Colors.blue,
+                        ),
                       ),
                       const Spacer(),
                       Text(
@@ -487,7 +553,10 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                     children: [
                       const Text(
                         'Final Total',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18,
+                        ),
                       ),
                       const Spacer(),
                       Text(
@@ -557,7 +626,10 @@ class _CartRow extends ConsumerWidget {
               // Name
               Text(
                 line.sweet.name,
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
               ),
               const SizedBox(height: 2),
               // Price
@@ -699,8 +771,9 @@ class _CartRow extends ConsumerWidget {
         filterQuality: FilterQuality.high,
         gaplessPlayback: true,
         errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-        loadingBuilder: (c, child, progress) =>
-            progress == null ? child : const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        loadingBuilder: (c, child, progress) => progress == null
+            ? child
+            : const Center(child: CircularProgressIndicator(strokeWidth: 2)),
       );
     }
     return Image.asset(
@@ -789,10 +862,14 @@ class _NoteChip extends StatelessWidget {
         side: BorderSide(color: onSurface.withOpacity(0.18)),
         shape: const StadiumBorder(),
         foregroundColor: onSurface.withOpacity(0.95),
-        backgroundColor:
-            hasNote ? onSurface.withOpacity(0.08) : Colors.transparent,
+        backgroundColor: hasNote
+            ? onSurface.withOpacity(0.08)
+            : Colors.transparent,
       ),
-      icon: Icon(hasNote ? Icons.sticky_note_2 : Icons.note_add_outlined, size: 18),
+      icon: Icon(
+        hasNote ? Icons.sticky_note_2 : Icons.note_add_outlined,
+        size: 18,
+      ),
       label: Text(hasNote ? preview : 'Add note'),
     );
   }

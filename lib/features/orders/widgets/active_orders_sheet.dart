@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/config/app_config.dart';
 import '../data/order_models.dart' as om;
 import '../data/active_orders_service.dart';
 import '../screens/order_status_page.dart';
@@ -49,15 +50,15 @@ class ActiveOrdersSheet extends ConsumerWidget {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 24),
-              Text(
-                'Error loading orders',
-                style: TextStyle(color: cs.error),
-              ),
+              Text('Error loading orders', style: TextStyle(color: cs.error)),
               const SizedBox(height: 8),
               Text(
                 e.toString(),
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: cs.onSurface.withOpacity(0.6)),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: cs.onSurface.withOpacity(0.6),
+                ),
               ),
               const SizedBox(height: 24),
             ],
@@ -113,7 +114,10 @@ class ActiveOrdersSheet extends ConsumerWidget {
                   children: [
                     const Text(
                       'Active Orders',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const Spacer(),
                     Text(
@@ -135,10 +139,20 @@ class ActiveOrdersSheet extends ConsumerWidget {
                     itemBuilder: (context, i) => _OrderCard(
                       order: orders[i],
                       onTap: () {
+                        final cfg = ref.read(appConfigProvider);
+                        final preservedLocation =
+                            (cfg.slug != null && cfg.slug!.trim().isNotEmpty)
+                            ? '/s/${cfg.slug!.trim()}'
+                            : null;
+
                         Navigator.of(context).pop(); // Close sheet
                         Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (_) => OrderStatusPage(orderId: orders[i].orderId),
+                            settings: preservedLocation == null
+                                ? null
+                                : RouteSettings(name: preservedLocation),
+                            builder: (_) =>
+                                OrderStatusPage(orderId: orders[i].orderId),
                           ),
                         );
                       },
@@ -246,9 +260,14 @@ class _OrderCard extends StatelessWidget {
       case om.FulfillmentType.carPickup:
         return 'Car: ${order.customerCarPlate ?? 'N/A'}';
       case om.FulfillmentType.delivery:
-        if (order.customerAddress != null) {
-          final addr = order.customerAddress!;
-          return 'Delivery: ${addr['home'] ?? ''}, ${addr['road'] ?? ''}';
+        final addr = order.customerAddress;
+        if (addr != null) {
+          final home = (addr.home ?? '').trim();
+          final road = (addr.road ?? '').trim();
+          if (home.isEmpty && road.isEmpty) return 'Delivery';
+          if (home.isEmpty) return 'Delivery: $road';
+          if (road.isEmpty) return 'Delivery: $home';
+          return 'Delivery: $home, $road';
         }
         return 'Delivery';
       case om.FulfillmentType.dineIn:
@@ -311,11 +330,7 @@ class _FulfillmentIcon extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final iconData = _getIcon();
 
-    return Icon(
-      iconData,
-      size: 14,
-      color: cs.onSurface.withOpacity(0.6),
-    );
+    return Icon(iconData, size: 14, color: cs.onSurface.withOpacity(0.6));
   }
 
   IconData _getIcon() {
