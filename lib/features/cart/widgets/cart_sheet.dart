@@ -6,7 +6,7 @@ import '../../sweets/data/sweets_repo.dart'; // sweetsStreamProvider
 import '../../sweets/data/sweet.dart';
 import '../state/cart_controller.dart';
 
-import '../../orders/data/order_models.dart';
+import '../../orders/data/order_models.dart' show OrderItem, FulfillmentType;
 import '../../orders/data/order_service.dart';
 import '../../orders/screens/order_status_page.dart';
 
@@ -129,18 +129,51 @@ class _CartSheetState extends ConsumerState<CartSheet> {
       // Effective table: QR takes precedence, otherwise use manual entry
       final effectiveTable = (qrTable != null && qrTable.isNotEmpty) ? qrTable : manualTable;
 
+      // Convert OrderType to FulfillmentType
+      FulfillmentType fulfillmentType;
+      switch (selectedType!) {
+        case OrderType.carPlate:
+          fulfillmentType = FulfillmentType.carPickup;
+          break;
+        case OrderType.delivery:
+          fulfillmentType = FulfillmentType.delivery;
+          break;
+        case OrderType.dineIn:
+          fulfillmentType = FulfillmentType.dineIn;
+          break;
+      }
+
+      // Prepare fulfillment-specific fields (only pass relevant fields)
+      String? orderTable;
+      String? orderCarPlate;
+      Map<String, dynamic>? orderAddress;
+
+      switch (fulfillmentType) {
+        case FulfillmentType.carPickup:
+          // Car pickup: only pass car plate
+          orderCarPlate = _checkoutData.carPlate;
+          break;
+        case FulfillmentType.delivery:
+          // Delivery: only pass address
+          orderAddress = _checkoutData.address?.toMap();
+          break;
+        case FulfillmentType.dineIn:
+          // Dine-in: only pass table
+          orderTable = effectiveTable;
+          break;
+      }
+
       // Create order with configured fields
       final service = ref.read(orderServiceProvider);
       final order = await service.createOrder(
         items: items,
-        table: effectiveTable,
+        fulfillmentType: fulfillmentType,
+        table: orderTable,
         customerPhone: config.phoneRequired ? _checkoutData.phone : null,
-        customerCarPlate: config.plateNumberRequired ? _checkoutData.carPlate : null,
+        customerCarPlate: orderCarPlate,
         loyaltyDiscount: loyaltySettings.enabled ? _checkoutData.discount : null,
         loyaltyPointsUsed: loyaltySettings.enabled ? _checkoutData.pointsToUse : null,
-        customerAddress: config.addressRequired && _checkoutData.address != null
-            ? _checkoutData.address!.toMap()
-            : null,
+        customerAddress: orderAddress,
       );
 
       // Redeem points (if using points for discount)
@@ -263,17 +296,45 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         // Check if at least cart has items (detailed validation happens in _confirmOrder)
         // We do basic check here to enable/disable button
         final configAsync = ref.watch(checkoutFieldsConfigProvider);
+        final selectedType = ref.watch(selectedOrderTypeProvider);
+
         final hasMinimumInfo = configAsync.when(
           data: (config) {
-            // Check if at least required fields are not empty
+            // Check phone if required (applies to all types)
             if (config.phoneRequired && _checkoutData.phone.isEmpty) return false;
-            if (config.plateNumberRequired && _checkoutData.carPlate.isEmpty) return false;
-            if (config.tableRequired && (_checkoutData.table == null || _checkoutData.table!.isEmpty)) return false;
-            if (config.addressRequired && (_checkoutData.address == null || !_checkoutData.address!.isValid)) return false;
-            return true;
+
+            // Determine available order types
+            final availableTypes = <OrderType>[];
+            if (config.plateNumberRequired) availableTypes.add(OrderType.carPlate);
+            if (config.addressRequired) availableTypes.add(OrderType.delivery);
+            if (config.tableRequired) availableTypes.add(OrderType.dineIn);
+
+            // Auto-select if only one type available
+            if (availableTypes.length == 1 && selectedType == null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                ref.read(selectedOrderTypeProvider.notifier).state = availableTypes.first;
+              });
+              return false; // Button disabled until next frame when selection is set
+            }
+
+            // If multiple types available and none selected, button disabled
+            if (availableTypes.length > 1 && selectedType == null) return false;
+
+            // If no type selected at this point, disable button
+            if (selectedType == null) return false;
+
+            // Validate ONLY the field required for the selected type
+            switch (selectedType) {
+              case OrderType.carPlate:
+                return _checkoutData.carPlate.isNotEmpty;
+              case OrderType.delivery:
+                return _checkoutData.address != null && _checkoutData.address!.isValid;
+              case OrderType.dineIn:
+                return _checkoutData.table != null && _checkoutData.table!.isNotEmpty;
+            }
           },
           loading: () => false,
-          error: (_, __) => _checkoutData.phone.isNotEmpty && _checkoutData.carPlate.isNotEmpty, // Fallback to old behavior
+          error: (_, __) => false, // Disable button on error
         );
 
         final isReadyToConfirm = hasMinimumInfo && lines.isNotEmpty;

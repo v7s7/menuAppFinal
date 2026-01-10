@@ -14,6 +14,9 @@ class EmailService {
     required String merchantName,
     required String dashboardUrl,
     required String toEmail,
+    String? fulfillmentType,
+    String? carPlate,
+    String? deliveryAddress,
   }) async {
     if (!EmailConfig.isConfigured) {
       return EmailResult.error(
@@ -35,6 +38,9 @@ class EmailService {
             'merchantName': merchantName,
             'dashboardUrl': dashboardUrl,
             'toEmail': toEmail,
+            'fulfillmentType': fulfillmentType,
+            'carPlate': carPlate,
+            'deliveryAddress': deliveryAddress,
           },
         }),
       );
@@ -66,6 +72,9 @@ class EmailService {
     required String dashboardUrl,
     required String toEmail,
     String? cancellationReason,
+    String? fulfillmentType,
+    String? carPlate,
+    String? deliveryAddress,
   }) async {
     if (!EmailConfig.isConfigured) {
       return EmailResult.error(
@@ -88,6 +97,9 @@ class EmailService {
             'dashboardUrl': dashboardUrl,
             'toEmail': toEmail,
             'cancellationReason': cancellationReason,
+            'fulfillmentType': fulfillmentType,
+            'carPlate': carPlate,
+            'deliveryAddress': deliveryAddress,
           },
         }),
       );

@@ -91,6 +91,25 @@ class OrderNotificationService {
           ? DateFormat('MM/dd/yyyy hh:mm a').format(createdAt.toDate())
           : DateFormat('MM/dd/yyyy hh:mm a').format(DateTime.now());
 
+      // Extract fulfillment details
+      final fulfillmentType = orderData['fulfillmentType'] as String?;
+      final carPlate = orderData['customerCarPlate'] as String?;
+      String? deliveryAddress;
+      if (orderData['customerAddress'] != null && orderData['customerAddress'] is Map) {
+        final addr = orderData['customerAddress'] as Map;
+        final parts = <String>[];
+        if (addr['flat'] != null && (addr['flat'] as String).isNotEmpty) {
+          parts.add('Flat ${addr['flat']}');
+        }
+        if (addr['home'] != null) parts.add('Home ${addr['home']}');
+        if (addr['road'] != null) parts.add('Road ${addr['road']}');
+        if (addr['block'] != null) parts.add('Block ${addr['block']}');
+        if (addr['city'] != null) parts.add(addr['city'] as String);
+        if (parts.isNotEmpty) {
+          deliveryAddress = parts.join(', ');
+        }
+      }
+
       final result = await EmailService.sendOrderNotification(
         orderNo: orderNo,
         table: table,
@@ -100,6 +119,9 @@ class OrderNotificationService {
         merchantName: merchantName,
         dashboardUrl: 'https://sweetweb.web.app/merchant',
         toEmail: EmailConfig.defaultEmail, // ALWAYS use default email
+        fulfillmentType: fulfillmentType,
+        carPlate: carPlate,
+        deliveryAddress: deliveryAddress,
       );
 
       if (result.success) {

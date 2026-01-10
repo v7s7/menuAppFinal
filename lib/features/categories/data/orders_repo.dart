@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/branding/branding_providers.dart'; // merchantIdProvider, branchIdProvider
+import '../../../core/models/bahrain_address.dart';
 import '../../orders/data/order_models.dart' as om;
 
 enum OrdersFilter { all, pending, accepted, preparing, ready, served, cancelled }
@@ -53,6 +54,7 @@ om.Order _fromDoc(DocumentSnapshot<Map<String, dynamic>> snap) {
       name: (m['name'] ?? '').toString(),
       price: price,
       qty: qty,
+      note: m['note'] as String?,
     );
   }).toList();
 
@@ -63,6 +65,38 @@ om.Order _fromDoc(DocumentSnapshot<Map<String, dynamic>> snap) {
   final ts = d['createdAt'];
   final createdAt = ts is Timestamp ? ts.toDate() : DateTime.now();
 
+  // Parse address if present
+  BahrainAddress? address;
+  if (d['customerAddress'] != null && d['customerAddress'] is Map) {
+    try {
+      address = BahrainAddress.fromMap(d['customerAddress'] as Map<String, dynamic>);
+    } catch (_) {
+      address = null;
+    }
+  }
+
+  // Read fulfillmentType with backward compatibility
+  om.FulfillmentType fulfillmentType;
+  final fulfillmentTypeStr = (d['fulfillmentType'] as String?)?.trim();
+  final carPlate = (d['customerCarPlate'] as String?)?.trim();
+  final table = (d['table'] as String?)?.trim();
+
+  if (fulfillmentTypeStr != null && fulfillmentTypeStr.isNotEmpty) {
+    // New orders have explicit fulfillmentType field
+    fulfillmentType = om.FulfillmentTypeX.fromFirestore(fulfillmentTypeStr);
+  } else {
+    // Backward compatibility: infer from existing fields
+    if (address != null) {
+      fulfillmentType = om.FulfillmentType.delivery;
+    } else if (carPlate != null && carPlate.isNotEmpty) {
+      fulfillmentType = om.FulfillmentType.carPickup;
+    } else {
+      fulfillmentType = table != null && table.isNotEmpty
+          ? om.FulfillmentType.dineIn
+          : om.FulfillmentType.carPickup;
+    }
+  }
+
   return om.Order(
     orderId: snap.id,
     orderNo: (d['orderNo'] ?? '—').toString(),
@@ -70,7 +104,14 @@ om.Order _fromDoc(DocumentSnapshot<Map<String, dynamic>> snap) {
     createdAt: createdAt,
     items: items,
     subtotal: double.parse(subtotal.toStringAsFixed(3)),
-    table: (d['table'] as String?)?.trim(),
+    fulfillmentType: fulfillmentType,
+    table: table,
+    customerPhone: (d['customerPhone'] as String?)?.trim(),
+    customerCarPlate: carPlate,
+    loyaltyDiscount: d['loyaltyDiscount'] != null ? _asNum(d['loyaltyDiscount']).toDouble() : null,
+    loyaltyPointsUsed: d['loyaltyPointsUsed'] != null ? _asNum(d['loyaltyPointsUsed']).toInt() : null,
+    customerAddress: address,
+    cancellationReason: (d['cancellationReason'] as String?)?.trim(),
   );
 }
 

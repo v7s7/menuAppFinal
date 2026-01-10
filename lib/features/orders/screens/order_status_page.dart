@@ -98,31 +98,8 @@ class OrderStatusPage extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
 
-          // Car plate - prominently displayed
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            decoration: BoxDecoration(
-              color: cs.onSurface.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: cs.onSurface.withOpacity(0.3), width: 2),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.directions_car, color: cs.onSurface, size: 24),
-                const SizedBox(width: 8),
-                Text(
-                  order.customerCarPlate ?? 'N/A',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: cs.onSurface, // Uses theme's secondary color
-                    letterSpacing: 2,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          // Fulfillment info - prominently displayed based on type
+          _buildFulfillmentInfo(order, cs),
           const SizedBox(height: 24),
 
           // Status message
@@ -270,6 +247,71 @@ class OrderStatusPage extends ConsumerWidget {
                   ),
                 ],
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFulfillmentInfo(Order order, ColorScheme cs) {
+    IconData icon;
+    String label;
+    String info;
+
+    switch (order.fulfillmentType) {
+      case FulfillmentType.carPickup:
+        icon = Icons.directions_car;
+        label = 'Car Pickup';
+        info = order.customerCarPlate ?? 'N/A';
+        break;
+      case FulfillmentType.delivery:
+        icon = Icons.delivery_dining;
+        label = 'Delivery';
+        info = order.customerAddress?.toDisplayString() ?? 'No address';
+        break;
+      case FulfillmentType.dineIn:
+        icon = Icons.restaurant;
+        label = 'Dine-in';
+        info = order.table != null ? 'Table #${order.table}' : 'No table';
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: BoxDecoration(
+        color: cs.onSurface.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.onSurface.withOpacity(0.3), width: 2),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: cs.onSurface, size: 24),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: cs.onSurface.withOpacity(0.7),
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            info,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: order.fulfillmentType == FulfillmentType.delivery ? 16 : 20,
+              fontWeight: FontWeight.w800,
+              color: cs.onSurface,
+              letterSpacing: order.fulfillmentType == FulfillmentType.carPickup ? 2 : 0.5,
             ),
           ),
         ],
