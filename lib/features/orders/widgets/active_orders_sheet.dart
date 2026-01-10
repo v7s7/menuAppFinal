@@ -36,35 +36,87 @@ class ActiveOrdersSheet extends ConsumerWidget {
           ),
         ),
       ),
-      error: (e, _) => SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildHandle(),
-              const SizedBox(height: 12),
-              const Text(
-                'Active Orders',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 24),
-              Text('Error loading orders', style: TextStyle(color: cs.error)),
-              const SizedBox(height: 8),
-              Text(
-                e.toString(),
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: cs.onSurface.withOpacity(0.6),
+      error: (e, _) {
+        // Detect if error is due to index building
+        final errorMsg = e.toString().toLowerCase();
+        final isIndexError = errorMsg.contains('index') ||
+            errorMsg.contains('firebase_index') ||
+            errorMsg.contains('requires an index');
+
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildHandle(),
+                const SizedBox(height: 12),
+                const Text(
+                  'Active Orders',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
-              ),
-              const SizedBox(height: 24),
-            ],
+                const SizedBox(height: 24),
+                if (isIndexError) ...[
+                  Icon(
+                    Icons.hourglass_empty,
+                    size: 48,
+                    color: cs.primary.withOpacity(0.7),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Preparing your orders...',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: cs.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'We\'re setting up your order history.\nThis may take 2-3 minutes.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: cs.onSurface.withOpacity(0.7),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const SizedBox(
+                    width: 200,
+                    child: LinearProgressIndicator(),
+                  ),
+                ] else ...[
+                  Icon(
+                    Icons.error_outline,
+                    size: 48,
+                    color: cs.error.withOpacity(0.7),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Error loading orders',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: cs.error,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    e.toString(),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: cs.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 24),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
       data: (orders) {
         if (orders.isEmpty) {
           return SafeArea(

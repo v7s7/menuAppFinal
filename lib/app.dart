@@ -240,7 +240,7 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: Column(
+            child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Stack(
@@ -273,7 +273,7 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
                   ],
                 ),
                 if (activeOrdersCount > 0) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(width: 8),
                   Stack(
                     clipBehavior: Clip.none,
                     children: [
