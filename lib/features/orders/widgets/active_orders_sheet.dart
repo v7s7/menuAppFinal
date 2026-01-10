@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/config/app_config.dart';
 import '../data/order_models.dart' as om;
@@ -37,11 +38,9 @@ class ActiveOrdersSheet extends ConsumerWidget {
         ),
       ),
       error: (e, _) {
-        // Detect if error is due to index building
-        final errorMsg = e.toString().toLowerCase();
-        final isIndexError = errorMsg.contains('index') ||
-            errorMsg.contains('firebase_index') ||
-            errorMsg.contains('requires an index');
+        // Robust error detection using FirebaseException
+        final isIndexBuilding = _isIndexBuildingError(e);
+        final errorMessage = _getCleanErrorMessage(e);
 
         return SafeArea(
           top: false,
@@ -57,7 +56,7 @@ class ActiveOrdersSheet extends ConsumerWidget {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 24),
-                if (isIndexError) ...[
+                if (isIndexBuilding) ...[
                   Icon(
                     Icons.hourglass_empty,
                     size: 48,
@@ -65,7 +64,7 @@ class ActiveOrdersSheet extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Preparing your orders...',
+                    'Preparing database index…',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -74,17 +73,29 @@ class ActiveOrdersSheet extends ConsumerWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'We\'re setting up your order history.\nThis may take 2-3 minutes.',
+                    'Please retry in a few minutes.\nWe\'re setting up your order history.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 13,
                       color: cs.onSurface.withOpacity(0.7),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   const SizedBox(
                     width: 200,
                     child: LinearProgressIndicator(),
+                  ),
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      ref.invalidate(activeOrdersStreamProvider);
+                    },
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Retry'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: cs.primary,
+                      side: BorderSide(color: cs.primary),
+                    ),
                   ),
                 ] else ...[
                   Icon(
@@ -94,7 +105,7 @@ class ActiveOrdersSheet extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'Error loading orders',
+                    'Unable to load orders',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -103,11 +114,23 @@ class ActiveOrdersSheet extends ConsumerWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    e.toString(),
+                    errorMessage,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 12,
                       color: cs.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      ref.invalidate(activeOrdersStreamProvider);
+                    },
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Retry'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: cs.error,
+                      side: BorderSide(color: cs.error),
                     ),
                   ),
                 ],
@@ -395,4 +418,67 @@ class _FulfillmentIcon extends StatelessWidget {
         return Icons.restaurant;
     }
   }
+}
+
+// ============================================================================
+// Helper Functions for Error Handling
+// ============================================================================
+
+/// Detects if the error is a Firestore index building error
+bool _isIndexBuildingError(Object error) {
+  // Check if it's a FirebaseException with failed-precondition code
+  if (error is FirebaseException) {
+    if (error.code == 'failed-precondition') {
+      final msg = error.message?.toLowerCase() ?? '';
+      return msg.contains('index') ||
+          msg.contains('requires an index') ||
+          msg.contains('currently building');
+    }
+  }
+
+  // Fallback: check error string for index-related messages
+  final errorStr = error.toString().toLowerCase();
+  return errorStr.contains('failed-precondition') &&
+      (errorStr.contains('index') ||
+          errorStr.contains('requires an index') ||
+          errorStr.contains('currently building'));
+}
+
+/// Extracts a clean, user-friendly error message
+String _getCleanErrorMessage(Object error) {
+  if (error is FirebaseException) {
+    // Map common Firebase error codes to friendly messages
+    switch (error.code) {
+      case 'permission-denied':
+        return 'Access denied. Please sign in and try again.';
+      case 'unavailable':
+        return 'Service temporarily unavailable. Please check your connection.';
+      case 'unauthenticated':
+        return 'Please sign in to view your orders.';
+      case 'not-found':
+        return 'Orders not found. Please try again later.';
+      case 'failed-precondition':
+        // Should be caught by _isIndexBuildingError, but just in case
+        return 'Database is being prepared. Please retry in a moment.';
+      default:
+        // Return the message if available, otherwise the code
+        return error.message ?? 'Error: ${error.code}';
+    }
+  }
+
+  // For non-Firebase exceptions, extract useful info without stack trace
+  final errorStr = error.toString();
+
+  // Remove stack traces (anything after newline)
+  final firstLine = errorStr.split('\n').first;
+
+  // Remove exception type prefix (e.g., "Exception: " or "StateError: ")
+  final cleaned = firstLine.replaceFirst(RegExp(r'^[A-Z]\w+Error:\s*'), '')
+                           .replaceFirst(RegExp(r'^[A-Z]\w+Exception:\s*'), '')
+                           .trim();
+
+  // Return cleaned message or fallback
+  return cleaned.isNotEmpty
+      ? cleaned
+      : 'An unexpected error occurred. Please try again.';
 }
