@@ -132,7 +132,6 @@ service cloud.firestore {
           // CREATE: Any signed-in user can place order
           // Backwards compatible: notifications is OPTIONAL.
           // If notifications exists, it must be correctly initialized.
-          // Config-based validation: Required checkout fields based on merchant config
           allow create: if isSignedIn() &&
             request.resource.data.userId == request.auth.uid &&
             request.resource.data.status == 'pending' &&
@@ -153,7 +152,6 @@ service cloud.firestore {
                 request.resource.data.notifications.waCancelSent == false
               )
             ) &&
-            // NEW: Validate required checkout fields based on config
             hasRequiredCheckoutFields(merchantId, branchId, request.resource.data);
 
           // READ: Own orders or staff
@@ -163,11 +161,8 @@ service cloud.firestore {
 
           // UPDATE: Service account (Cloudflare Worker) can ONLY update notification fields
           allow update: if isServiceAccount() &&
-            // Only notifications can change at the top-level
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['notifications']) &&
-            // Notifications field must be a map
             request.resource.data.notifications is map &&
-            // Only valid notification fields allowed
             request.resource.data.notifications.keys().hasOnly([
               'waNewSent', 'waCancelSent',
               'waNewSentAt', 'waNewSid',
@@ -177,59 +172,53 @@ service cloud.firestore {
           // UPDATE: Staff (including admin) can ONLY update order status workflow fields
           // STRICT VALIDATION: Only allowed fields can be modified (using affectedKeys)
           allow update: if isStaff(merchantId, branchId) &&
-            // Only allow status workflow fields to be modified
             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'status',
               'updatedAt',
               'updatedByUid',
               'updatedByRole',
               'updatedByEmail',
+              'acceptedAt',          // ✅ FIX: allow accept timestamp
               'preparingAt',
               'readyAt',
               'servedAt',
               'cancelledAt',
               'cancellationReason'
             ]) &&
-            // Status field: Must be valid order status
             request.resource.data.status in ['pending', 'accepted', 'preparing', 'ready', 'served', 'cancelled'] &&
-            // Valid status transitions (prevent invalid workflows)
             (
-              // pending -> accepted, preparing, or cancelled
               (resource.data.status == 'pending' && request.resource.data.status in ['accepted', 'preparing', 'cancelled']) ||
-              // accepted -> preparing or cancelled
               (resource.data.status == 'accepted' && request.resource.data.status in ['preparing', 'cancelled']) ||
-              // preparing -> ready or cancelled
               (resource.data.status == 'preparing' && request.resource.data.status in ['ready', 'cancelled']) ||
-              // ready -> served or cancelled
               (resource.data.status == 'ready' && request.resource.data.status in ['served', 'cancelled']) ||
-              // served/cancelled are terminal states (no changes allowed)
               (resource.data.status in ['served', 'cancelled'] && request.resource.data.status == resource.data.status)
             ) &&
-            // Audit logging: Must include updatedByUid when status changes
+            // ✅ FIX: acceptedAt can ONLY be set when status becomes accepted
+            (
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny(['acceptedAt']) ||
+              (
+                request.resource.data.status == 'accepted' &&
+                request.resource.data.acceptedAt is timestamp
+              )
+            ) &&
             (request.resource.data.status == resource.data.status ||
              (request.resource.data.updatedByUid is string && request.resource.data.updatedByUid == request.auth.uid)) &&
-            // updatedAt is always required for updates
             request.resource.data.updatedAt is timestamp;
 
-          // No deletes (preserve order history)
           allow delete: if false;
         }
 
         // -------------------- ROLES --------------------
         match /roles/{userId} {
-          // Individual document read: Staff can read their own, admins can read any
           allow get: if isSignedIn() &&
             (request.auth.uid == userId || isAdmin(merchantId, branchId));
 
-          // Collection queries: Only admins can list all roles
           allow list: if isAdmin(merchantId, branchId);
 
-          // Only admins can manage roles
           allow write: if isAdmin(merchantId, branchId);
         }
 
         // -------------------- CONFIG (BRANDING & LOYALTY & CHECKOUT FIELDS) --------------------
-        // Keep branding/loyalty/checkoutFields public, BUT block public access to notifications config doc.
         match /config/{docId} {
           allow read: if docId != 'notifications';
           allow write: if isAdmin(merchantId, branchId);
@@ -237,35 +226,25 @@ service cloud.firestore {
 
         // -------------------- CONFIG (WHATSAPP NOTIFICATIONS) --------------------
         match /config/notifications {
-          // STAFF READ: Only staff can see WhatsApp notification config
           allow read: if isStaff(merchantId, branchId);
 
-          // ADMIN CREATE/UPDATE: Only admins can configure WhatsApp notifications
           allow create, update: if isAdmin(merchantId, branchId) &&
-            // whatsappEnabled must be boolean
             request.resource.data.whatsappEnabled is bool &&
-            // If enabled, whatsappNumber must be valid E.164 format
             (!request.resource.data.whatsappEnabled ||
              (request.resource.data.whatsappNumber is string &&
               request.resource.data.whatsappNumber.matches('^\\+[1-9]\\d{7,14}$'))) &&
-            // Audit fields required
             request.resource.data.updatedAt == request.time &&
             request.resource.data.updatedBy == request.auth.uid;
 
-          // No deletes (preserve notification history)
           allow delete: if false;
         }
 
         // -------------------- CUSTOMERS (LOYALTY) --------------------
         match /customers/{phone} {
-          // READ: Anyone signed in can read customer profiles (for points display)
           allow read: if isSignedIn();
 
-          // CREATE: Allow creating customer profiles during checkout
-          // carPlate is optional (only for car pickup orders)
           allow create: if isSignedIn() &&
             request.resource.data.phone == phone &&
-            // carPlate is optional, but if present must be valid
             (!request.resource.data.keys().hasAny(['carPlate']) ||
              (request.resource.data.carPlate is string && request.resource.data.carPlate.size() > 0)) &&
             request.resource.data.points is int &&
@@ -274,49 +253,38 @@ service cloud.firestore {
             request.resource.data.totalSpent >= 0 &&
             request.resource.data.orderCount is int &&
             request.resource.data.orderCount >= 0 &&
-            // lastOrderAt is optional
             (!request.resource.data.keys().hasAny(['lastOrderAt']) || request.resource.data.lastOrderAt is timestamp || request.resource.data.lastOrderAt == null);
 
-          // UPDATE: Allow updating customer profiles (points, spending, etc.)
           allow update: if isSignedIn() &&
-            request.resource.data.phone == resource.data.phone &&  // Can't change phone
-            // carPlate is optional, but if present must be valid
+            request.resource.data.phone == resource.data.phone &&
             (!request.resource.data.keys().hasAny(['carPlate']) ||
              (request.resource.data.carPlate is string && request.resource.data.carPlate.size() > 0)) &&
             request.resource.data.points is int &&
             request.resource.data.points >= 0 &&
             request.resource.data.totalSpent is number &&
-            request.resource.data.totalSpent >= resource.data.totalSpent &&  // Can't decrease
+            request.resource.data.totalSpent >= resource.data.totalSpent &&
             request.resource.data.orderCount is int &&
-            request.resource.data.orderCount >= resource.data.orderCount &&  // Can't decrease
-            // lastOrderAt is optional
+            request.resource.data.orderCount >= resource.data.orderCount &&
             (!request.resource.data.keys().hasAny(['lastOrderAt']) || request.resource.data.lastOrderAt is timestamp || request.resource.data.lastOrderAt == null);
 
-          // No deletes
           allow delete: if false;
         }
 
         // -------------------- POINTS TRANSACTIONS (AUDIT TRAIL) --------------------
         match /pointsTransactions/{transactionId} {
-          // READ: Staff can view all transactions
           allow read: if isStaff(merchantId, branchId);
 
-          // CREATE: Allow system writes for audit trail
           allow create: if isSignedIn() &&
             request.resource.data.phone is string &&
             request.resource.data.type in ['earned', 'redeemed'] &&
             request.resource.data.points is int;
 
-          // No updates or deletes (immutable audit log)
           allow update, delete: if false;
         }
 
         // -------------------- COUNTERS (ORDER NUMBERING) --------------------
         match /counters/{counterId} {
-          // READ: Anyone signed in can read counters
           allow read: if isSignedIn();
-
-          // WRITE: Anyone signed in can update counters (for order number generation)
           allow write: if isSignedIn();
         }
       }
