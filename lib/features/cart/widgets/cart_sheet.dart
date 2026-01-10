@@ -143,19 +143,37 @@ class _CartSheetState extends ConsumerState<CartSheet> {
           break;
       }
 
+      // Prepare fulfillment-specific fields (only pass relevant fields)
+      String? orderTable;
+      String? orderCarPlate;
+      Map<String, dynamic>? orderAddress;
+
+      switch (fulfillmentType) {
+        case FulfillmentType.carPickup:
+          // Car pickup: only pass car plate
+          orderCarPlate = _checkoutData.carPlate;
+          break;
+        case FulfillmentType.delivery:
+          // Delivery: only pass address
+          orderAddress = _checkoutData.address?.toMap();
+          break;
+        case FulfillmentType.dineIn:
+          // Dine-in: only pass table
+          orderTable = effectiveTable;
+          break;
+      }
+
       // Create order with configured fields
       final service = ref.read(orderServiceProvider);
       final order = await service.createOrder(
         items: items,
         fulfillmentType: fulfillmentType,
-        table: effectiveTable,
+        table: orderTable,
         customerPhone: config.phoneRequired ? _checkoutData.phone : null,
-        customerCarPlate: config.plateNumberRequired ? _checkoutData.carPlate : null,
+        customerCarPlate: orderCarPlate,
         loyaltyDiscount: loyaltySettings.enabled ? _checkoutData.discount : null,
         loyaltyPointsUsed: loyaltySettings.enabled ? _checkoutData.pointsToUse : null,
-        customerAddress: config.addressRequired && _checkoutData.address != null
-            ? _checkoutData.address!.toMap()
-            : null,
+        customerAddress: orderAddress,
       );
 
       // Redeem points (if using points for discount)
