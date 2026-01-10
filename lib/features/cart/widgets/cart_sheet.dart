@@ -8,6 +8,7 @@ import '../state/cart_controller.dart';
 
 import '../../orders/data/order_models.dart' show OrderItem, FulfillmentType;
 import '../../orders/data/order_service.dart';
+import '../../orders/data/active_orders_service.dart' show activeOrdersServiceProvider;
 import '../../orders/screens/order_status_page.dart';
 
 import '../../../core/config/app_config.dart';
@@ -175,6 +176,17 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         loyaltyPointsUsed: loyaltySettings.enabled ? _checkoutData.pointsToUse : null,
         customerAddress: orderAddress,
       );
+
+      // Persist order ID to local storage for "Active Orders" feature
+      final activeOrdersService = ref.read(activeOrdersServiceProvider);
+      if (activeOrdersService != null) {
+        try {
+          await activeOrdersService.addOrderId(order.orderId);
+        } catch (e) {
+          debugPrint('[Cart] Failed to persist order ID: $e');
+          // Continue anyway - order is already created
+        }
+      }
 
       // Redeem points (if using points for discount)
       if (loyaltySettings.enabled && _checkoutData.pointsToUse > 0 && _checkoutData.phone.isNotEmpty) {

@@ -11,6 +11,8 @@ import 'core/config/slug_routing.dart';
 import 'features/sweets/widgets/sweets_viewport.dart';
 import 'features/cart/widgets/cart_sheet.dart';
 import 'features/cart/state/cart_controller.dart'; // for live cart count
+import 'features/orders/widgets/active_orders_sheet.dart';
+import 'features/orders/data/active_orders_service.dart' show activeOrdersCountProvider;
 
 class SweetsApp extends ConsumerStatefulWidget {
   const SweetsApp({super.key});
@@ -127,6 +129,19 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
     );
   }
 
+  void _openActiveOrdersSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => const ActiveOrdersSheet(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final b = ref.watch(brandingProvider).maybeWhen(
@@ -143,6 +158,7 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
     final cartCount = ref.watch(
       cartControllerProvider.select((c) => c.totalCount),
     );
+    final activeOrdersCount = ref.watch(activeOrdersCountProvider);
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -186,6 +202,13 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
         ],
       ),
       body: SweetsViewport(cartBadgeKey: _cartActionKey),
+      floatingActionButton: activeOrdersCount > 0
+          ? _ActiveOrdersButton(
+              count: activeOrdersCount,
+              onPressed: () => _openActiveOrdersSheet(context),
+            )
+          : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 }
@@ -258,6 +281,80 @@ class _CartCountBadge extends StatelessWidget {
           color: onSurface, // secondary/onSurface
           fontSize: 10,
           fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+class _ActiveOrdersButton extends StatelessWidget {
+  final int count;
+  final VoidCallback onPressed;
+
+  const _ActiveOrdersButton({
+    required this.count,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: cs.primary,
+        borderRadius: BorderRadius.circular(24),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(24),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.receipt_long,
+                  color: cs.onPrimary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Active Orders',
+                  style: TextStyle(
+                    color: cs.onPrimary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: cs.onPrimary,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    count.toString(),
+                    style: TextStyle(
+                      color: cs.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

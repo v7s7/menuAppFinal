@@ -38,6 +38,9 @@ dependencies:
   # Audio for order alerts
   just_audio: ^0.9.40
 
+  # Local storage for active orders persistence
+  shared_preferences: ^2.3.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
