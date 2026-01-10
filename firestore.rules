@@ -175,28 +175,21 @@ service cloud.firestore {
             ]);
 
           // UPDATE: Staff (including admin) can ONLY update order status workflow fields
-          // STRICT VALIDATION: Only allowed fields can be modified
+          // STRICT VALIDATION: Only allowed fields can be modified (using affectedKeys)
           allow update: if isStaff(merchantId, branchId) &&
-            // Immutable fields: Cannot change core order data
-            request.resource.data.userId == resource.data.userId &&
-            request.resource.data.merchantId == resource.data.merchantId &&
-            request.resource.data.branchId == resource.data.branchId &&
-            request.resource.data.items == resource.data.items &&
-            request.resource.data.subtotal == resource.data.subtotal &&
-            request.resource.data.createdAt == resource.data.createdAt &&
-            request.resource.data.orderNo == resource.data.orderNo &&
-            // Staff cannot change notifications (reserved for service account)
-            // BACKWARD COMPATIBLE: Old orders may not have notifications field
-            (!resource.data.keys().hasAny(['notifications']) || request.resource.data.notifications == resource.data.notifications) &&
-            // Immutable: fulfillmentType cannot be changed (if present)
-            (!resource.data.keys().hasAny(['fulfillmentType']) || request.resource.data.fulfillmentType == resource.data.fulfillmentType) &&
-            // Optional immutable fields (if they exist, they cannot be changed)
-            (!resource.data.keys().hasAny(['customerPhone']) || request.resource.data.customerPhone == resource.data.customerPhone) &&
-            (!resource.data.keys().hasAny(['customerCarPlate']) || request.resource.data.customerCarPlate == resource.data.customerCarPlate) &&
-            (!resource.data.keys().hasAny(['table']) || request.resource.data.table == resource.data.table) &&
-            (!resource.data.keys().hasAny(['loyaltyDiscount']) || request.resource.data.loyaltyDiscount == resource.data.loyaltyDiscount) &&
-            (!resource.data.keys().hasAny(['loyaltyPointsUsed']) || request.resource.data.loyaltyPointsUsed == resource.data.loyaltyPointsUsed) &&
-            (!resource.data.keys().hasAny(['customerAddress']) || request.resource.data.customerAddress == resource.data.customerAddress) &&
+            // Only allow status workflow fields to be modified
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status',
+              'updatedAt',
+              'updatedByUid',
+              'updatedByRole',
+              'updatedByEmail',
+              'preparingAt',
+              'readyAt',
+              'servedAt',
+              'cancelledAt',
+              'cancellationReason'
+            ]) &&
             // Status field: Must be valid order status
             request.resource.data.status in ['pending', 'accepted', 'preparing', 'ready', 'served', 'cancelled'] &&
             // Valid status transitions (prevent invalid workflows)
@@ -215,20 +208,6 @@ service cloud.firestore {
             // Audit logging: Must include updatedByUid when status changes
             (request.resource.data.status == resource.data.status ||
              (request.resource.data.updatedByUid is string && request.resource.data.updatedByUid == request.auth.uid)) &&
-            // Audit logging: updatedByRole must be valid if present
-            (!request.resource.data.keys().hasAny(['updatedByRole']) ||
-             request.resource.data.updatedByRole in ['admin', 'staff']) &&
-            // Audit logging: updatedByEmail is optional
-            (!request.resource.data.keys().hasAny(['updatedByEmail']) ||
-             request.resource.data.updatedByEmail is string) &&
-            // Status-specific timestamps (optional, set by code)
-            (!request.resource.data.keys().hasAny(['preparingAt']) || request.resource.data.preparingAt is timestamp) &&
-            (!request.resource.data.keys().hasAny(['readyAt']) || request.resource.data.readyAt is timestamp) &&
-            (!request.resource.data.keys().hasAny(['servedAt']) || request.resource.data.servedAt is timestamp) &&
-            (!request.resource.data.keys().hasAny(['cancelledAt']) || request.resource.data.cancelledAt is timestamp) &&
-            // Cancellation reason: Only when status is cancelled
-            (!request.resource.data.keys().hasAny(['cancellationReason']) ||
-             request.resource.data.status == 'cancelled') &&
             // updatedAt is always required for updates
             request.resource.data.updatedAt is timestamp;
 

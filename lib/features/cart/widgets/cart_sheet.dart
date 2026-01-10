@@ -309,17 +309,22 @@ class _CartSheetState extends ConsumerState<CartSheet> {
             if (config.addressRequired) availableTypes.add(OrderType.delivery);
             if (config.tableRequired) availableTypes.add(OrderType.dineIn);
 
+            // Auto-select if only one type available
+            if (availableTypes.length == 1 && selectedType == null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                ref.read(selectedOrderTypeProvider.notifier).state = availableTypes.first;
+              });
+              return false; // Button disabled until next frame when selection is set
+            }
+
             // If multiple types available and none selected, button disabled
             if (availableTypes.length > 1 && selectedType == null) return false;
 
-            // If only one type available, use it (selectedType might be null)
-            final effectiveType = selectedType ?? (availableTypes.length == 1 ? availableTypes.first : null);
-
-            // If no type determined, disable button
-            if (effectiveType == null) return false;
+            // If no type selected at this point, disable button
+            if (selectedType == null) return false;
 
             // Validate ONLY the field required for the selected type
-            switch (effectiveType) {
+            switch (selectedType) {
               case OrderType.carPlate:
                 return _checkoutData.carPlate.isNotEmpty;
               case OrderType.delivery:
