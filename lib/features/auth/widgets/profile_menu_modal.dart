@@ -47,72 +47,125 @@ class _ProfileMenuSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(userProfileStreamProvider);
-    final title = profileAsync.maybeWhen(
-      data: (profile) => (profile?.phoneE164.isNotEmpty ?? false)
-          ? profile!.phoneE164
-          : 'My Account',
-      orElse: () => 'My Account',
+    final profile = profileAsync.maybeWhen(
+      data: (p) => p,
+      orElse: () => null,
     );
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header with profile info
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 16, 16),
+                child: Row(
+                  children: [
+                    // Profile avatar
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                          width: 2,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.person,
+                        size: 28,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    // Profile info
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            profile?.displayName ?? 'My Account',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          if (profile?.phoneE164 != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              profile!.phoneE164,
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                  ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.of(context).pop(),
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ],
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            _MenuItem(
-              icon: Icons.history,
-              label: 'Order History',
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const OrderHistoryPage()),
-                );
-              },
-            ),
-            _MenuItem(
-              icon: Icons.directions_car,
-              label: 'Saved Cars',
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SavedCarsPage()),
-                );
-              },
-            ),
-            _MenuItem(
-              icon: Icons.home_outlined,
-              label: 'Saved Addresses',
-              onTap: () {
-                Navigator.of(context).pop();
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SavedAddressesPage()),
-                );
-              },
-            ),
-            const Divider(),
-            _MenuItem(
-              icon: Icons.logout,
-              label: 'Logout',
-              onTap: () => _logout(context, ref),
-            ),
-            const SizedBox(height: 8),
-          ],
+              ),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+              // Menu items
+              _MenuItem(
+                icon: Icons.receipt_long_outlined,
+                label: 'Order History',
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const OrderHistoryPage()),
+                  );
+                },
+              ),
+              _MenuItem(
+                icon: Icons.location_on_outlined,
+                label: 'Saved Addresses',
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SavedAddressesPage()),
+                  );
+                },
+              ),
+              _MenuItem(
+                icon: Icons.directions_car_outlined,
+                label: 'Saved Cars',
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const SavedCarsPage()),
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+              // Logout
+              _MenuItem(
+                icon: Icons.logout,
+                label: 'Logout',
+                iconColor: Colors.red.shade700,
+                labelColor: Colors.red.shade700,
+                onTap: () => _logout(context, ref),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
         ),
       ),
     );
@@ -120,18 +173,51 @@ class _ProfileMenuSheet extends ConsumerWidget {
 }
 
 class _MenuItem extends StatelessWidget {
-  const _MenuItem({required this.icon, required this.label, required this.onTap});
+  const _MenuItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.iconColor,
+    this.labelColor,
+  });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final Color? iconColor;
+  final Color? labelColor;
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      leading: Icon(icon),
-      title: Text(label),
+    return InkWell(
       onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 24,
+              color: iconColor ?? Theme.of(context).colorScheme.onSurface.withOpacity(0.8),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: labelColor ?? Theme.of(context).colorScheme.onSurface,
+                      fontWeight: FontWeight.w500,
+                    ),
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              size: 20,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
