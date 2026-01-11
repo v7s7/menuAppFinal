@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl_phone_field/intl_phone_field.dart';
 
 import '../../../core/auth/auth_service.dart';
 
@@ -31,9 +31,8 @@ class _LoginSheetState extends ConsumerState<_LoginSheet> {
   final _passwordController = TextEditingController();
   bool _obscure = true;
   bool _loading = false;
-  String _countryCode = '+973';
-
-  final _countries = const ['+973', '+966', '+965', '+968', '+974', '+971'];
+  String _phoneE164 = '';
+  bool _isSignup = false; // Toggle between login and signup
 
   @override
   void dispose() {
@@ -42,14 +41,25 @@ class _LoginSheetState extends ConsumerState<_LoginSheet> {
     super.dispose();
   }
 
-  String get _phoneE164 => '$_countryCode${_phoneController.text.trim()}';
-
-  Future<void> _handleAuth({required bool signup}) async {
+  Future<void> _handleAuth() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // Ensure phone number is properly formatted
+    if (_phoneE164.isEmpty || _phoneE164.length < 10) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Please enter a valid phone number'),
+          backgroundColor: Colors.orange.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     setState(() => _loading = true);
     final authService = ref.read(authServiceProvider);
     try {
-      if (signup) {
+      if (_isSignup) {
         await authService.signUpWithPhone(
           phoneE164: _phoneE164,
           password: _passwordController.text.trim(),
@@ -69,7 +79,7 @@ class _LoginSheetState extends ConsumerState<_LoginSheet> {
         // Show welcome message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(signup ? '✓ Welcome! Your account has been created.' : '✓ Welcome back!'),
+            content: Text(_isSignup ? '✓ Welcome! Your account has been created.' : '✓ Welcome back!'),
             backgroundColor: Colors.green.shade700,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
@@ -114,139 +124,192 @@ class _LoginSheetState extends ConsumerState<_LoginSheet> {
       case 'invalid-credential':
         return 'Invalid credentials. Please check your input.';
       default:
-        return 'Login failed: ${e.message ?? e.code}';
+        return 'Authentication failed: ${e.message ?? e.code}';
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isWide = MediaQuery.of(context).size.width > 640;
-    final content = Padding(
-      padding: EdgeInsets.only(
-        left: 16,
-        right: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-        top: 16,
+    final onSurface = Theme.of(context).colorScheme.onSurface;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Login or Sign up',
-                    style: Theme.of(context).textTheme.titleMedium,
+      child: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.only(
+            left: 24,
+            right: 24,
+            top: 20,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Header
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.person_outline,
+                        size: 28,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _isSignup ? 'Create Account' : 'Welcome Back',
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: _loading ? null : () => Navigator.of(context).pop(),
+                        color: onSurface.withOpacity(0.6),
+                      ),
+                    ],
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: _loading ? null : () => Navigator.of(context).pop(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                DropdownButton<String>(
-                  value: _countryCode,
-                  onChanged: _loading
-                      ? null
-                      : (v) {
-                          if (v != null) setState(() => _countryCode = v);
-                        },
-                  items: _countries
-                      .map((c) => DropdownMenuItem<String>(
-                            value: c,
-                            child: Text(c),
-                          ))
-                      .toList(),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextFormField(
+                  const SizedBox(height: 8),
+                  Text(
+                    _isSignup
+                        ? 'Sign up to track your orders and earn rewards'
+                        : 'Login to your account to continue',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: onSurface.withOpacity(0.6),
+                        ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Phone number field
+                  IntlPhoneField(
                     controller: _phoneController,
-                    decoration: const InputDecoration(
-                      labelText: 'Phone number',
-                      hintText: 'xxxxxxxx',
+                    decoration: InputDecoration(
+                      labelText: 'Phone Number',
+                      hintText: '12345678',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      filled: true,
+                      fillColor: onSurface.withOpacity(0.04),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
                     ),
-                    keyboardType: TextInputType.phone,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    initialCountryCode: 'BH', // Bahrain default
+                    countries: const ['BH', 'SA', 'KW', 'OM', 'QA', 'AE'],
+                    dropdownIconPosition: IconPosition.trailing,
+                    enabled: !_loading,
+                    onChanged: (phone) {
+                      _phoneE164 = phone.completeNumber;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Password field
+                  TextFormField(
+                    controller: _passwordController,
+                    decoration: InputDecoration(
+                      labelText: 'Password',
+                      hintText: _isSignup ? 'Min 8 characters' : 'Enter your password',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      filled: true,
+                      fillColor: onSurface.withOpacity(0.04),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                        ),
+                        onPressed: _loading
+                            ? null
+                            : () => setState(() => _obscure = !_obscure),
+                      ),
+                    ),
+                    obscureText: _obscure,
                     enabled: !_loading,
                     validator: (v) {
-                      final t = (v ?? '').trim();
-                      if (t.isEmpty) return 'Required';
-                      if (!RegExp(r'^\d+$').hasMatch(t)) return 'Digits only';
+                      if (v == null || v.isEmpty) return 'Password is required';
+                      if (v.length < 8) return 'Password must be at least 8 characters';
                       return null;
                     },
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _passwordController,
-              decoration: InputDecoration(
-                labelText: 'Password (min 8)',
-                suffixIcon: IconButton(
-                  icon: Icon(_obscure ? Icons.visibility : Icons.visibility_off),
-                  onPressed: _loading
-                      ? null
-                      : () => setState(() => _obscure = !_obscure),
-                ),
+                  const SizedBox(height: 24),
+
+                  // Primary action button
+                  SizedBox(
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed: _loading ? null : _handleAuth,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: _loading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(
+                              _isSignup ? 'Sign Up' : 'Login',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Toggle between login and signup
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        _isSignup ? 'Already have an account?' : "Don't have an account?",
+                        style: TextStyle(
+                          color: onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _loading
+                            ? null
+                            : () => setState(() => _isSignup = !_isSignup),
+                        child: Text(
+                          _isSignup ? 'Login' : 'Sign Up',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              obscureText: _obscure,
-              enabled: !_loading,
-              validator: (v) {
-                if (v == null || v.length < 8) return 'Min 8 characters';
-                return null;
-              },
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _loading ? null : () => _handleAuth(signup: false),
-                    child: _loading
-                        ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Login'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _loading ? null : () => _handleAuth(signup: true),
-                    child: const Text('Sign up'),
-                  ),
-                ),
-              ],
-            ),
-            TextButton(
-              onPressed: _loading ? null : () => Navigator.of(context).pop(),
-              child: const Text('Close'),
-            ),
-          ],
+          ),
         ),
       ),
     );
-
-    if (isWide) {
-      return Dialog(
-        insetPadding: const EdgeInsets.all(24),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: content,
-        ),
-      );
-    }
-
-    return content;
   }
 }
