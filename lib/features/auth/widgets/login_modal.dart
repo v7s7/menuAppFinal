@@ -60,23 +60,41 @@ class _LoginSheetState extends ConsumerState<_LoginSheet> {
           password: _passwordController.text.trim(),
         );
       }
+
+      // Give Firebase auth state a moment to propagate
+      await Future.delayed(const Duration(milliseconds: 100));
+
       if (mounted) {
         Navigator.of(context).pop();
+        // Show welcome message
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(signup ? 'Account created' : 'Logged in')),
+          SnackBar(
+            content: Text(signup ? '✓ Welcome! Your account has been created.' : '✓ Welcome back!'),
+            backgroundColor: Colors.green.shade700,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 2),
+          ),
         );
       }
     } on FirebaseAuthException catch (e) {
       final msg = _mapAuthError(e);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg)),
+          SnackBar(
+            content: Text(msg),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Something went wrong. Please try again.')),
+          SnackBar(
+            content: const Text('Something went wrong. Please try again.'),
+            backgroundColor: Colors.red.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     } finally {

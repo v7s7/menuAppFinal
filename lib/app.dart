@@ -184,6 +184,7 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
       cartControllerProvider.select((c) => c.totalCount),
     );
     final activeOrdersCount = ref.watch(activeOrdersCountProvider);
+    final isLoggedIn = ref.watch(isLoggedInProvider);
 
     // Debug: log active orders count
     if (activeOrdersCount > 0) {
@@ -204,9 +205,15 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
               minimumSize: const Size(48, 48),
               padding: EdgeInsets.zero,
               foregroundColor: onSurface,
+              backgroundColor: isLoggedIn
+                  ? onSurface.withOpacity(0.1)
+                  : Colors.transparent,
             ),
             onPressed: () => _openAuthEntry(context),
-            child: const Icon(Icons.person_outline, size: 20),
+            child: Icon(
+              isLoggedIn ? Icons.person : Icons.person_outline,
+              size: 20,
+            ),
           ),
         ),
         title: Text(
