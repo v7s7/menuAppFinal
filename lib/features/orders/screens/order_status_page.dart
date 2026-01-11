@@ -41,7 +41,8 @@ class OrderStatusPage extends ConsumerWidget {
         }
 
         final order = snap.data!;
-        final finished = order.status == OrderStatus.served ||
+        final finished =
+            order.status == OrderStatus.served ||
             order.status == OrderStatus.cancelled;
 
         return PopScope(
@@ -53,15 +54,13 @@ class OrderStatusPage extends ConsumerWidget {
               elevation: 0,
               backgroundColor: Colors.transparent,
               scrolledUnderElevation: 0,
-              leading: finished
-                  ? IconButton(
-                      icon: const Icon(Icons.arrow_back),
-                      onPressed: () {
-                        // Navigate back to menu (pop to root)
-                        Navigator.of(context).popUntil((route) => route.isFirst);
-                      },
-                    )
-                  : null,
+              leading: IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () {
+                  // Navigate back to menu (pop to root), preserving slug
+                  Navigator.of(context).popUntil((route) => route.isFirst);
+                },
+              ),
             ),
             body: _buildBody(context, order, cs, finished),
           ),
@@ -70,7 +69,12 @@ class OrderStatusPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildBody(BuildContext context, Order order, ColorScheme cs, bool finished) {
+  Widget _buildBody(
+    BuildContext context,
+    Order order,
+    ColorScheme cs,
+    bool finished,
+  ) {
     // Soft, theme-safe tints (very transparent)
     final servedBg = const Color(0xFF22C55E).withOpacity(0.12);
     final servedBorder = const Color(0xFF22C55E).withOpacity(0.22);
@@ -103,7 +107,15 @@ class OrderStatusPage extends ConsumerWidget {
           const SizedBox(height: 24),
 
           // Status message
-          _buildStatusMessage(order.status, cs, finished, cancelBg, cancelBorder, servedBg, servedBorder),
+          _buildStatusMessage(
+            order.status,
+            cs,
+            finished,
+            cancelBg,
+            cancelBorder,
+            servedBg,
+            servedBorder,
+          ),
           const SizedBox(height: 24),
 
           // Status progress
@@ -158,7 +170,10 @@ class OrderStatusPage extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             color: cs.onSurface.withOpacity(0.15),
                             borderRadius: BorderRadius.circular(8),
@@ -166,7 +181,8 @@ class OrderStatusPage extends ConsumerWidget {
                           child: Text(
                             'x${item.qty}',
                             style: TextStyle(
-                              color: cs.onSurface, // Uses theme's secondary color
+                              color:
+                                  cs.onSurface, // Uses theme's secondary color
                               fontWeight: FontWeight.w800,
                               fontSize: 14,
                             ),
@@ -191,11 +207,17 @@ class OrderStatusPage extends ConsumerWidget {
                                   decoration: BoxDecoration(
                                     color: cs.surface,
                                     borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: cs.outline.withOpacity(0.3)),
+                                    border: Border.all(
+                                      color: cs.outline.withOpacity(0.3),
+                                    ),
                                   ),
                                   child: Row(
                                     children: [
-                                      Icon(Icons.note, size: 16, color: cs.onSurface),
+                                      Icon(
+                                        Icons.note,
+                                        size: 16,
+                                        color: cs.onSurface,
+                                      ),
                                       const SizedBox(width: 6),
                                       Expanded(
                                         child: Text(
@@ -203,7 +225,9 @@ class OrderStatusPage extends ConsumerWidget {
                                           style: TextStyle(
                                             fontSize: 13,
                                             fontStyle: FontStyle.italic,
-                                            color: cs.onSurface.withOpacity(0.8),
+                                            color: cs.onSurface.withOpacity(
+                                              0.8,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -234,7 +258,11 @@ class OrderStatusPage extends ConsumerWidget {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Icon(Icons.phone, size: 18, color: cs.onSurface.withOpacity(0.6)),
+                      Icon(
+                        Icons.phone,
+                        size: 18,
+                        color: cs.onSurface.withOpacity(0.6),
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         order.customerPhone!,
@@ -308,10 +336,14 @@ class OrderStatusPage extends ConsumerWidget {
             info,
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: order.fulfillmentType == FulfillmentType.delivery ? 16 : 20,
+              fontSize: order.fulfillmentType == FulfillmentType.delivery
+                  ? 16
+                  : 20,
               fontWeight: FontWeight.w800,
               color: cs.onSurface,
-              letterSpacing: order.fulfillmentType == FulfillmentType.carPickup ? 2 : 0.5,
+              letterSpacing: order.fulfillmentType == FulfillmentType.carPickup
+                  ? 2
+                  : 0.5,
             ),
           ),
         ],
@@ -374,7 +406,8 @@ class OrderStatusPage extends ConsumerWidget {
 
     if (status == OrderStatus.cancelled) {
       title = 'Order Cancelled';
-      message = 'This order has been cancelled. Please contact the merchant if you have questions.';
+      message =
+          'This order has been cancelled. Please contact the merchant if you have questions.';
       bgColor = cancelBg;
       borderColor = cancelBorder;
     } else if (status == OrderStatus.served) {
@@ -384,12 +417,14 @@ class OrderStatusPage extends ConsumerWidget {
       borderColor = servedBorder;
     } else if (status == OrderStatus.ready) {
       title = 'Order Ready!';
-      message = 'Your order is ready for pickup. Please proceed to the counter.';
+      message =
+          'Your order is ready for pickup. Please proceed to the counter.';
       bgColor = const Color(0xFF22C55E).withOpacity(0.12);
       borderColor = const Color(0xFF22C55E).withOpacity(0.22);
     } else if (status == OrderStatus.preparing) {
       title = 'Being Prepared';
-      message = 'Your order is being prepared. We\'ll notify you when it\'s ready!';
+      message =
+          'Your order is being prepared. We\'ll notify you when it\'s ready!';
       bgColor = Colors.blue.withOpacity(0.12);
       borderColor = Colors.blue.withOpacity(0.22);
     } else {
