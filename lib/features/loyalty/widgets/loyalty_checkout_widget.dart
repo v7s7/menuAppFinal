@@ -19,7 +19,7 @@ enum OrderType {
   String get label {
     switch (this) {
       case OrderType.carPlate:
-        return 'Car Plate';
+        return 'Car Pickup';
       case OrderType.delivery:
         return 'Delivery';
       case OrderType.dineIn:

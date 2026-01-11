@@ -48,7 +48,7 @@ class _CartSheetState extends ConsumerState<CartSheet> {
 
       // Determine available order types
       final availableTypes = <String>[];
-      if (config.plateNumberRequired) availableTypes.add('Car Plate');
+      if (config.plateNumberRequired) availableTypes.add('Car Pickup');
       if (config.addressRequired) availableTypes.add('Delivery');
       if (config.tableRequired) availableTypes.add('Dine-in');
 
