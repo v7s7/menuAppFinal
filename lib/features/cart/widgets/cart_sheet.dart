@@ -48,7 +48,7 @@ class _CartSheetState extends ConsumerState<CartSheet> {
 
       // Determine available order types
       final availableTypes = <String>[];
-      if (config.plateNumberRequired) availableTypes.add('Car Plate');
+      if (config.plateNumberRequired) availableTypes.add('Car Pickup');
       if (config.addressRequired) availableTypes.add('Delivery');
       if (config.tableRequired) availableTypes.add('Dine-in');
 
@@ -67,16 +67,32 @@ class _CartSheetState extends ConsumerState<CartSheet> {
       }
 
       // Validate required fields based on selected order type
-      if (config.phoneRequired && _checkoutData.phone.isEmpty) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please enter your phone number to continue'),
-              backgroundColor: Colors.orange,
-            ),
-          );
+      if (config.phoneRequired) {
+        if (_checkoutData.phone.isEmpty) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Please enter your phone number to continue'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return;
         }
-        return;
+
+        // Validate phone number length based on country code
+        final phoneValidation = _validatePhoneNumber(_checkoutData.phone);
+        if (phoneValidation != null) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(phoneValidation),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return;
+        }
       }
 
       // Validate based on selected order type
@@ -261,6 +277,57 @@ class _CartSheetState extends ConsumerState<CartSheet> {
     }
   }
 
+  /// Validates phone number length based on country code
+  /// Returns error message if invalid, null if valid
+  String? _validatePhoneNumber(String phone) {
+    if (phone.isEmpty) return null;
+
+    // Remove all whitespace and formatting (keep only + and digits)
+    final cleaned = phone.replaceAll(RegExp(r'[^\d+]'), '');
+
+    // Try to match against known Gulf country codes (check longest first)
+    final knownCountries = {
+      '+973': 8,  // Bahrain
+      '+966': 9,  // Saudi Arabia
+      '+965': 8,  // Kuwait
+      '+968': 8,  // Oman
+      '+974': 8,  // Qatar
+      '+971': 9,  // UAE
+    };
+
+    for (final entry in knownCountries.entries) {
+      final dialCode = entry.key;
+      final requiredLength = entry.value;
+
+      if (cleaned.startsWith(dialCode)) {
+        // Extract digits after country code
+        final digits = cleaned.substring(dialCode.length);
+
+        if (digits.isEmpty) {
+          return 'Phone number is required';
+        }
+        if (digits.length != requiredLength) {
+          return 'Phone number must be exactly $requiredLength digits for $dialCode';
+        }
+        // Valid for this country!
+        return null;
+      }
+    }
+
+    // For unknown countries, require reasonable minimum length
+    final match = RegExp(r'^\+?(\d+)$').firstMatch(cleaned);
+    if (match != null) {
+      final allDigits = match.group(1) ?? '';
+      // Require at least 10 digits total (country code + number)
+      if (allDigits.length >= 10) {
+        return null; // Seems reasonable for unknown country
+      }
+    }
+
+    // Not enough digits or invalid format
+    return 'Please enter a complete phone number';
+  }
+
   @override
   Widget build(BuildContext context) {
     final cart = ref.watch(cartControllerProvider);
@@ -343,8 +410,13 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         final hasMinimumInfo = configAsync.when(
           data: (config) {
             // Check phone if required (applies to all types)
-            if (config.phoneRequired && _checkoutData.phone.isEmpty)
-              return false;
+            if (config.phoneRequired) {
+              if (_checkoutData.phone.isEmpty) return false;
+
+              // Validate phone number length - button stays disabled if invalid
+              final phoneError = _validatePhoneNumber(_checkoutData.phone);
+              if (phoneError != null) return false;
+            }
 
             // Determine available order types
             final availableTypes = <OrderType>[];
