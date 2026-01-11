@@ -201,8 +201,9 @@ class _LoginSheetState extends ConsumerState<_LoginSheet> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Header
+                  // Header with close button
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Container(
                         padding: const EdgeInsets.all(8),
@@ -216,22 +217,81 @@ class _LoginSheetState extends ConsumerState<_LoginSheet> {
                           color: primaryColor,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          _isSignup ? 'Create Account' : 'Welcome Back',
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                            color: secondaryColor,
-                          ),
-                        ),
-                      ),
                       IconButton(
                         icon: const Icon(Icons.close),
                         onPressed: _loading ? null : () => Navigator.of(context).pop(),
                         color: onSurface.withOpacity(0.6),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Tabs for Login / Sign Up
+                  Container(
+                    height: 48,
+                    decoration: BoxDecoration(
+                      color: onSurface.withOpacity(0.05),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: _loading ? null : () {
+                              setState(() {
+                                _isSignup = false;
+                                _confirmPasswordController.clear();
+                                _validateFields();
+                              });
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              decoration: BoxDecoration(
+                                color: !_isSignup ? primaryColor : Colors.transparent,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'Login',
+                                  style: TextStyle(
+                                    color: !_isSignup ? Colors.white : onSurface.withOpacity(0.6),
+                                    fontSize: 16,
+                                    fontWeight: !_isSignup ? FontWeight.w700 : FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: _loading ? null : () {
+                              setState(() {
+                                _isSignup = true;
+                                _validateFields();
+                              });
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              decoration: BoxDecoration(
+                                color: _isSignup ? primaryColor : Colors.transparent,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'Sign Up',
+                                  style: TextStyle(
+                                    color: _isSignup ? Colors.white : onSurface.withOpacity(0.6),
+                                    fontSize: 16,
+                                    fontWeight: _isSignup ? FontWeight.w700 : FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -488,35 +548,6 @@ class _LoginSheetState extends ConsumerState<_LoginSheet> {
                     ],
                   ),
                   const SizedBox(height: 16),
-
-                  // Toggle between login and signup
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        _isSignup ? 'Already have an account?' : "Don't have an account?",
-                        style: TextStyle(
-                          color: onSurface.withOpacity(0.7),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: _loading
-                            ? null
-                            : () => setState(() {
-                                  _isSignup = !_isSignup;
-                                  _confirmPasswordController.clear();
-                                  _validateFields();
-                                }),
-                        child: Text(
-                          _isSignup ? 'Login' : 'Sign Up',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: primaryColor,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),
