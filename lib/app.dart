@@ -196,20 +196,27 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         automaticallyImplyLeading: false, // hides back arrow
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 8),
-          child: OutlinedButton(
-            style: OutlinedButton.styleFrom(
-              shape: const CircleBorder(),
-              side: BorderSide(color: onSurface),
-              minimumSize: const Size(48, 48),
-              padding: EdgeInsets.zero,
-              foregroundColor: onSurface,
-            ),
-            onPressed: () => _openAuthEntry(context),
-            child: Icon(
-              isLoggedIn ? Icons.person : Icons.person_outline,
-              size: 20,
+        leading: Center(
+          child: Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: SizedBox(
+              width: 48,
+              height: 48,
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  shape: const CircleBorder(),
+                  side: BorderSide(color: onSurface),
+                  minimumSize: const Size(48, 48),
+                  maximumSize: const Size(48, 48),
+                  padding: EdgeInsets.zero,
+                  foregroundColor: onSurface,
+                ),
+                onPressed: () => _openAuthEntry(context),
+                child: Icon(
+                  isLoggedIn ? Icons.person : Icons.person_outline,
+                  size: 20,
+                ),
+              ),
             ),
           ),
         ),
