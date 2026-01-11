@@ -204,7 +204,6 @@ class _LoginSheetState extends ConsumerState<_LoginSheet> {
                       ),
                     ),
                     initialCountryCode: 'BH', // Bahrain default
-                    countries: const ['BH', 'SA', 'KW', 'OM', 'QA', 'AE'],
                     dropdownIconPosition: IconPosition.trailing,
                     enabled: !_loading,
                     onChanged: (phone) {
