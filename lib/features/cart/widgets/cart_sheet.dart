@@ -414,8 +414,13 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         final hasMinimumInfo = configAsync.when(
           data: (config) {
             // Check phone if required (applies to all types)
-            if (config.phoneRequired && _checkoutData.phone.isEmpty)
-              return false;
+            if (config.phoneRequired) {
+              if (_checkoutData.phone.isEmpty) return false;
+
+              // Validate phone number length - button stays disabled if invalid
+              final phoneError = _validatePhoneNumber(_checkoutData.phone);
+              if (phoneError != null) return false;
+            }
 
             // Determine available order types
             final availableTypes = <OrderType>[];
