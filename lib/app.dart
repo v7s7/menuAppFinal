@@ -127,62 +127,12 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
   // Shared with SweetsViewport for fly-to-cart target
   final GlobalKey _cartActionKey = GlobalKey();
 
-  bool _hadPersistedActiveOrdersAtLaunch = false;
-  bool _autoOpenedActiveOrders = false;
-
-  ProviderSubscription? _activeOrdersServiceSub;
-  ProviderSubscription<int>? _activeOrdersCountSub;
-
-  @override
-  void initState() {
-    super.initState();
-
-    // Best-effort immediate check (works if prefs are already loaded).
-    _hadPersistedActiveOrdersAtLaunch =
-        ref.read(activeOrdersServiceProvider)?.getStoredOrderIds().isNotEmpty ??
-        false;
-
-    // Determine whether this session started with persisted active orders.
-    // This gates the "auto-open" behavior to refresh/cold-start only.
-    _activeOrdersServiceSub = ref.listenManual(activeOrdersServiceProvider, (
-      prev,
-      next,
-    ) {
-      if (prev == null && next != null) {
-        _hadPersistedActiveOrdersAtLaunch = next.getStoredOrderIds().isNotEmpty;
-      }
-    }, fireImmediately: true);
-
-    // Auto-open Active Orders sheet once after refresh/cold-start.
-    _activeOrdersCountSub = ref.listenManual<int>(activeOrdersCountProvider, (
-      prev,
-      next,
-    ) {
-      if (_autoOpenedActiveOrders) return;
-      if (!_hadPersistedActiveOrdersAtLaunch) return;
-      if (next <= 0) return;
-
-      _autoOpenedActiveOrders = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _openActiveOrdersSheet(context);
-      });
-    }, fireImmediately: true);
-  }
-
-  @override
-  void dispose() {
-    _activeOrdersServiceSub?.close();
-    _activeOrdersCountSub?.close();
-    super.dispose();
-  }
-
   void _openCartSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -195,7 +145,7 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -251,12 +201,12 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
                       style: OutlinedButton.styleFrom(
                         shape: const CircleBorder(),
                         side: BorderSide(color: onSurface),
-                        minimumSize: const Size(40, 40),
+                        minimumSize: const Size(48, 48),
                         padding: EdgeInsets.zero,
                         foregroundColor: onSurface, // icon color
                       ),
                       onPressed: () => _openCartSheet(context),
-                      child: const Icon(Icons.shopping_bag_outlined, size: 18),
+                      child: const Icon(Icons.shopping_bag_outlined, size: 20),
                     ),
                     if (cartCount > 0)
                       Positioned(
@@ -281,12 +231,12 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
                         style: OutlinedButton.styleFrom(
                           shape: const CircleBorder(),
                           side: BorderSide(color: onSurface),
-                          minimumSize: const Size(40, 40),
+                          minimumSize: const Size(48, 48),
                           padding: EdgeInsets.zero,
                           foregroundColor: onSurface,
                         ),
                         onPressed: () => _openActiveOrdersSheet(context),
-                        child: const Icon(Icons.receipt_long, size: 18),
+                        child: const Icon(Icons.receipt_long, size: 20),
                       ),
                       Positioned(
                         right: -2,
@@ -379,14 +329,14 @@ class _CartCountBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.30), // neutral dark overlay
+        color: Colors.red, // Red background for clear visibility
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: onSurface.withValues(alpha: 0.6)),
+        border: Border.all(color: Colors.red.shade700, width: 1.5),
       ),
       child: Text(
         text,
-        style: TextStyle(
-          color: onSurface, // secondary/onSurface
+        style: const TextStyle(
+          color: Colors.white, // White text for contrast
           fontSize: 10,
           fontWeight: FontWeight.w800,
         ),
