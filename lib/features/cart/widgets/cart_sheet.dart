@@ -282,12 +282,19 @@ class _CartSheetState extends ConsumerState<CartSheet> {
   String? _validatePhoneNumber(String phone) {
     if (phone.isEmpty) return null;
 
-    // Extract country code and digits
-    final match = RegExp(r'^\+(\d{1,4})(\d+)$').firstMatch(phone);
-    if (match == null) return 'Invalid phone number format';
+    // Remove all whitespace and formatting (keep only + and digits)
+    final cleaned = phone.replaceAll(RegExp(r'[^\d+]'), '');
 
-    final dialCode = '+${match.group(1)}';
+    // Extract country code and digits (handle + symbol)
+    final match = RegExp(r'^\+?(\d{1,4})(\d+)$').firstMatch(cleaned);
+    if (match == null) {
+      // If format is completely wrong, allow it (field validator will catch it)
+      return null;
+    }
+
+    final countryCode = match.group(1) ?? '';
     final digits = match.group(2) ?? '';
+    final dialCode = '+$countryCode';
 
     // Get required length for this country
     int requiredLength;
@@ -311,14 +318,14 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         requiredLength = 9;
         break;
       default:
-        requiredLength = 10;
+        // For unknown countries, be lenient
+        return null;
     }
 
-    if (digits.length < requiredLength) {
-      return 'Phone number must be $requiredLength digits for $dialCode';
-    }
+    // Only validate if we have digits
+    if (digits.isEmpty) return null;
 
-    if (digits.length > requiredLength) {
+    if (digits.length != requiredLength) {
       return 'Phone number must be exactly $requiredLength digits for $dialCode';
     }
 
