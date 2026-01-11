@@ -285,51 +285,47 @@ class _CartSheetState extends ConsumerState<CartSheet> {
     // Remove all whitespace and formatting (keep only + and digits)
     final cleaned = phone.replaceAll(RegExp(r'[^\d+]'), '');
 
-    // Extract country code and digits (handle + symbol)
-    final match = RegExp(r'^\+?(\d{1,4})(\d+)$').firstMatch(cleaned);
-    if (match == null) {
-      // If format is completely wrong, allow it (field validator will catch it)
-      return null;
-    }
+    // Try to match against known Gulf country codes (check longest first)
+    final knownCountries = {
+      '+973': 8,  // Bahrain
+      '+966': 9,  // Saudi Arabia
+      '+965': 8,  // Kuwait
+      '+968': 8,  // Oman
+      '+974': 8,  // Qatar
+      '+971': 9,  // UAE
+    };
 
-    final countryCode = match.group(1) ?? '';
-    final digits = match.group(2) ?? '';
-    final dialCode = '+$countryCode';
+    for (final entry in knownCountries.entries) {
+      final dialCode = entry.key;
+      final requiredLength = entry.value;
 
-    // Get required length for this country
-    int requiredLength;
-    switch (dialCode) {
-      case '+973': // Bahrain
-        requiredLength = 8;
-        break;
-      case '+966': // Saudi Arabia
-        requiredLength = 9;
-        break;
-      case '+965': // Kuwait
-        requiredLength = 8;
-        break;
-      case '+968': // Oman
-        requiredLength = 8;
-        break;
-      case '+974': // Qatar
-        requiredLength = 8;
-        break;
-      case '+971': // UAE
-        requiredLength = 9;
-        break;
-      default:
-        // For unknown countries, be lenient
+      if (cleaned.startsWith(dialCode)) {
+        // Extract digits after country code
+        final digits = cleaned.substring(dialCode.length);
+
+        if (digits.isEmpty) {
+          return 'Phone number is required';
+        }
+        if (digits.length != requiredLength) {
+          return 'Phone number must be exactly $requiredLength digits for $dialCode';
+        }
+        // Valid for this country!
         return null;
+      }
     }
 
-    // Only validate if we have digits
-    if (digits.isEmpty) return null;
-
-    if (digits.length != requiredLength) {
-      return 'Phone number must be exactly $requiredLength digits for $dialCode';
+    // For unknown countries, require reasonable minimum length
+    final match = RegExp(r'^\+?(\d+)$').firstMatch(cleaned);
+    if (match != null) {
+      final allDigits = match.group(1) ?? '';
+      // Require at least 10 digits total (country code + number)
+      if (allDigits.length >= 10) {
+        return null; // Seems reasonable for unknown country
+      }
     }
 
-    return null; // Valid
+    // Not enough digits or invalid format
+    return 'Please enter a complete phone number';
   }
 
   @override
