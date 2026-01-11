@@ -21,6 +21,7 @@ class OrderStatusPage extends ConsumerWidget {
       builder: (context, snap) {
         if (snap.hasError || !snap.hasData) {
           return Scaffold(
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             appBar: AppBar(
               title: const Text('Order Status'),
               centerTitle: true,
@@ -50,6 +51,7 @@ class OrderStatusPage extends ConsumerWidget {
         return PopScope(
           canPop: false, // Prevent going back after confirming order
           child: Scaffold(
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
             appBar: AppBar(
               title: const Text('Order Status'),
               centerTitle: true,
