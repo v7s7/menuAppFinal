@@ -205,9 +205,6 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
               minimumSize: const Size(48, 48),
               padding: EdgeInsets.zero,
               foregroundColor: onSurface,
-              backgroundColor: isLoggedIn
-                  ? onSurface.withOpacity(0.1)
-                  : Colors.transparent,
             ),
             onPressed: () => _openAuthEntry(context),
             child: Icon(
