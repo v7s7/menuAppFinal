@@ -119,6 +119,14 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
         return 8;
       case '+966': // Saudi Arabia
         return 9;
+      case '+965': // Kuwait
+        return 8;
+      case '+968': // Oman
+        return 8;
+      case '+974': // Qatar
+        return 8;
+      case '+971': // UAE
+        return 9;
       default:
         return 10;
     }
@@ -201,8 +209,14 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
               final digits = (phone?.number ?? '').replaceAll(RegExp(r'\D'), '');
               final dial = phone?.countryCode ?? _selectedDialCode;
               final max = _getMaxDigitsByDialCode(dial);
-              if (digits.isEmpty) return 'Phone is required';
-              if (digits.length != max) return 'Enter exactly $max digits';
+
+              if (digits.isEmpty) return 'Phone number is required';
+              if (digits.length < max) {
+                return 'Enter $max digits (currently ${digits.length})';
+              }
+              if (digits.length > max) {
+                return 'Maximum $max digits allowed';
+              }
               return null;
             },
             onCountryChanged: (country) {

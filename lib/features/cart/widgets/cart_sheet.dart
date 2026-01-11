@@ -67,16 +67,32 @@ class _CartSheetState extends ConsumerState<CartSheet> {
       }
 
       // Validate required fields based on selected order type
-      if (config.phoneRequired && _checkoutData.phone.isEmpty) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Please enter your phone number to continue'),
-              backgroundColor: Colors.orange,
-            ),
-          );
+      if (config.phoneRequired) {
+        if (_checkoutData.phone.isEmpty) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Please enter your phone number to continue'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return;
         }
-        return;
+
+        // Validate phone number length based on country code
+        final phoneValidation = _validatePhoneNumber(_checkoutData.phone);
+        if (phoneValidation != null) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(phoneValidation),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return;
+        }
       }
 
       // Validate based on selected order type
@@ -259,6 +275,54 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         );
       }
     }
+  }
+
+  /// Validates phone number length based on country code
+  /// Returns error message if invalid, null if valid
+  String? _validatePhoneNumber(String phone) {
+    if (phone.isEmpty) return null;
+
+    // Extract country code and digits
+    final match = RegExp(r'^\+(\d{1,4})(\d+)$').firstMatch(phone);
+    if (match == null) return 'Invalid phone number format';
+
+    final dialCode = '+${match.group(1)}';
+    final digits = match.group(2) ?? '';
+
+    // Get required length for this country
+    int requiredLength;
+    switch (dialCode) {
+      case '+973': // Bahrain
+        requiredLength = 8;
+        break;
+      case '+966': // Saudi Arabia
+        requiredLength = 9;
+        break;
+      case '+965': // Kuwait
+        requiredLength = 8;
+        break;
+      case '+968': // Oman
+        requiredLength = 8;
+        break;
+      case '+974': // Qatar
+        requiredLength = 8;
+        break;
+      case '+971': // UAE
+        requiredLength = 9;
+        break;
+      default:
+        requiredLength = 10;
+    }
+
+    if (digits.length < requiredLength) {
+      return 'Phone number must be $requiredLength digits for $dialCode';
+    }
+
+    if (digits.length > requiredLength) {
+      return 'Phone number must be exactly $requiredLength digits for $dialCode';
+    }
+
+    return null; // Valid
   }
 
   @override
