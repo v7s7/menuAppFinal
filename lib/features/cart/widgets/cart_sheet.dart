@@ -500,10 +500,16 @@ class _CartSheetState extends ConsumerState<CartSheet> {
         return SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 12,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                 Container(
                   width: 40,
                   height: 4,
@@ -551,13 +557,12 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                     ),
                   )
                 else
-                  Flexible(
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: lines.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (context, i) => _CartRow(line: lines[i]),
-                    ),
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: lines.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, i) => _CartRow(line: lines[i]),
                   ),
 
                 const SizedBox(height: 16),
@@ -659,6 +664,7 @@ class _CartSheetState extends ConsumerState<CartSheet> {
                 const SizedBox(height: 8),
               ],
             ),
+          ),
           ),
         );
       },
