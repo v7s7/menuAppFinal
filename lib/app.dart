@@ -127,56 +127,6 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
   // Shared with SweetsViewport for fly-to-cart target
   final GlobalKey _cartActionKey = GlobalKey();
 
-  bool _hadPersistedActiveOrdersAtLaunch = false;
-  bool _autoOpenedActiveOrders = false;
-
-  ProviderSubscription? _activeOrdersServiceSub;
-  ProviderSubscription<int>? _activeOrdersCountSub;
-
-  @override
-  void initState() {
-    super.initState();
-
-    // Best-effort immediate check (works if prefs are already loaded).
-    _hadPersistedActiveOrdersAtLaunch =
-        ref.read(activeOrdersServiceProvider)?.getStoredOrderIds().isNotEmpty ??
-        false;
-
-    // Determine whether this session started with persisted active orders.
-    // This gates the "auto-open" behavior to refresh/cold-start only.
-    _activeOrdersServiceSub = ref.listenManual(activeOrdersServiceProvider, (
-      prev,
-      next,
-    ) {
-      if (prev == null && next != null) {
-        _hadPersistedActiveOrdersAtLaunch = next.getStoredOrderIds().isNotEmpty;
-      }
-    }, fireImmediately: true);
-
-    // Auto-open Active Orders sheet once after refresh/cold-start.
-    _activeOrdersCountSub = ref.listenManual<int>(activeOrdersCountProvider, (
-      prev,
-      next,
-    ) {
-      if (_autoOpenedActiveOrders) return;
-      if (!_hadPersistedActiveOrdersAtLaunch) return;
-      if (next <= 0) return;
-
-      _autoOpenedActiveOrders = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        _openActiveOrdersSheet(context);
-      });
-    }, fireImmediately: true);
-  }
-
-  @override
-  void dispose() {
-    _activeOrdersServiceSub?.close();
-    _activeOrdersCountSub?.close();
-    super.dispose();
-  }
-
   void _openCartSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
