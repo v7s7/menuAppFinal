@@ -5,6 +5,12 @@ import 'package:intl/intl.dart';
 import 'package:intl_phone_field/intl_phone_field.dart';
 import 'package:intl_phone_field/phone_number.dart';
 
+import '../../../core/auth/auth_service.dart';
+import '../../../core/models/customer_address.dart';
+import '../../../core/models/customer_car.dart';
+import '../../auth/screens/saved_addresses_page.dart'
+  show customerAddressesProvider;
+import '../../auth/screens/saved_cars_page.dart' show customerCarsProvider;
 import '../data/loyalty_models.dart';
 import '../data/loyalty_service.dart';
 import '../data/checkout_fields_config.dart';
@@ -98,6 +104,10 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
   final _addressFlatController = TextEditingController();
   final _addressNotesController = TextEditingController();
 
+  bool _didPrefillPhone = false;
+  String? _selectedSavedCarId;
+  String? _selectedSavedAddressId;
+
   @override
   void dispose() {
     _phoneNumberController.dispose();
@@ -136,6 +146,35 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
   Widget build(BuildContext context) {
     final loyaltySettingsAsync = ref.watch(loyaltySettingsProvider);
     final checkoutFieldsConfigAsync = ref.watch(checkoutFieldsConfigProvider);
+    final profileAsync = ref.watch(userProfileStreamProvider);
+    final isLoggedIn = ref.watch(isLoggedInProvider);
+
+    // Prefill phone once when logged in and controller is empty
+    profileAsync.whenData((profile) {
+      if (_didPrefillPhone || !isLoggedIn) return;
+      final phone = profile?.phoneE164?.trim();
+      if (phone == null || phone.isEmpty) return;
+      if (_phoneNumberController.text.isNotEmpty) return;
+
+      final dialCode = _extractDialCode(phone);
+      final digits = _stripDialCode(phone, dialCode);
+      if (digits.isEmpty) return;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _selectedDialCode = dialCode;
+        _maxDigits = _getMaxDigitsByDialCode(dialCode);
+        _phoneNumberController.text = digits;
+        _e164Phone = '$dialCode$digits';
+        _didPrefillPhone = true;
+
+        ref.read(checkoutPhoneProvider.notifier).state = _e164Phone;
+        _updateCheckoutData(
+          loyaltySettingsAsync.value ?? LoyaltySettings.defaultSettings(),
+          checkoutFieldsConfigAsync.value ?? const CheckoutFieldsConfig(),
+        );
+        setState(() {});
+      });
+    });
 
     return loyaltySettingsAsync.when(
       loading: () => const SizedBox(),
@@ -370,9 +409,46 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
   }
 
   Widget _buildCarPlateFields(CheckoutFieldsConfig config, LoyaltySettings loyaltySettings) {
+    final carsAsync = ref.watch(customerCarsProvider);
+    final cars = carsAsync.maybeWhen<List<CustomerCar>>(
+      data: (data) => data,
+      orElse: () => const [],
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (cars.isNotEmpty) ...[
+          DropdownButtonFormField<String?>(
+            value: _selectedSavedCarId,
+            decoration: const InputDecoration(
+              labelText: 'Select saved car',
+              prefixIcon: Icon(Icons.directions_car),
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('Manual entry'),
+              ),
+              ...cars.map(
+                (c) => DropdownMenuItem<String?>(
+                  value: c.id,
+                  child: Text(c.plate),
+                ),
+              ),
+            ],
+            onChanged: (value) {
+              setState(() => _selectedSavedCarId = value);
+              if (value == null) return; // manual entry
+              final car = cars.firstWhere((c) => c.id == value, orElse: () => cars.first);
+              _carPlateController.text = car.plate;
+              ref.read(checkoutCarPlateProvider.notifier).state = car.plate;
+              _updateCheckoutData(loyaltySettings, config);
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
         TextField(
           controller: _carPlateController,
           decoration: const InputDecoration(
@@ -393,9 +469,48 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
   }
 
   Widget _buildDeliveryFields(CheckoutFieldsConfig config, LoyaltySettings loyaltySettings) {
+    final addressesAsync = ref.watch(customerAddressesProvider);
+    final addresses = addressesAsync.maybeWhen<List<CustomerAddress>>(
+      data: (data) => data,
+      orElse: () => const [],
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (addresses.isNotEmpty) ...[
+          DropdownButtonFormField<String?>(
+            value: _selectedSavedAddressId,
+            decoration: const InputDecoration(
+              labelText: 'Select saved address',
+              prefixIcon: Icon(Icons.home_outlined),
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('Manual entry'),
+              ),
+              ...addresses.asMap().entries.map(
+                (entry) => DropdownMenuItem<String?>(
+                  value: entry.value.id,
+                  child: Text(entry.value.label?.isNotEmpty == true
+                      ? entry.value.label!
+                      : 'Address ${entry.key + 1}'),
+                ),
+              ),
+            ],
+            onChanged: (value) {
+              setState(() => _selectedSavedAddressId = value);
+              if (value == null) return; // manual entry
+              final addr = addresses
+                  .firstWhere((a) => a.id == value, orElse: () => addresses.first);
+              _fillAddressControllers(addr);
+              _updateCheckoutData(loyaltySettings, config);
+            },
+          ),
+          const SizedBox(height: 12),
+        ],
         TextField(
           controller: _addressHomeController,
           decoration: const InputDecoration(
@@ -513,6 +628,7 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
     // Clear fields based on what's NOT selected
     if (type != OrderType.carPlate) {
       _carPlateController.clear();
+      _selectedSavedCarId = null;
       ref.read(checkoutCarPlateProvider.notifier).state = '';
     }
     if (type != OrderType.delivery) {
@@ -522,6 +638,7 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
       _addressCityController.clear();
       _addressFlatController.clear();
       _addressNotesController.clear();
+      _selectedSavedAddressId = null;
       ref.read(checkoutAddressHomeProvider.notifier).state = '';
       ref.read(checkoutAddressRoadProvider.notifier).state = '';
       ref.read(checkoutAddressBlockProvider.notifier).state = '';
@@ -827,6 +944,38 @@ class _LoyaltyCheckoutWidgetState extends ConsumerState<LoyaltyCheckoutWidget> {
         ],
       ),
     );
+  }
+
+  void _fillAddressControllers(CustomerAddress address) {
+    _addressHomeController.text = address.home;
+    _addressRoadController.text = address.road;
+    _addressBlockController.text = address.block;
+    _addressCityController.text = address.city;
+    _addressFlatController.text = address.flat ?? '';
+    _addressNotesController.text = address.notes ?? '';
+
+    ref.read(checkoutAddressHomeProvider.notifier).state = address.home;
+    ref.read(checkoutAddressRoadProvider.notifier).state = address.road;
+    ref.read(checkoutAddressBlockProvider.notifier).state = address.block;
+    ref.read(checkoutAddressCityProvider.notifier).state = address.city;
+    ref.read(checkoutAddressFlatProvider.notifier).state = address.flat ?? '';
+    ref.read(checkoutAddressNotesProvider.notifier).state = address.notes ?? '';
+  }
+
+  String _extractDialCode(String e164) {
+    const codes = ['+973', '+966', '+965', '+968', '+974', '+971'];
+    for (final c in codes) {
+      if (e164.startsWith(c)) return c;
+    }
+    return '+973';
+  }
+
+  String _stripDialCode(String e164, String dialCode) {
+    final cleaned = e164.replaceAll(RegExp(r'\s+'), '');
+    if (cleaned.startsWith(dialCode)) {
+      return cleaned.substring(dialCode.length).replaceAll(RegExp(r'\D'), '');
+    }
+    return cleaned.replaceAll(RegExp(r'\D'), '');
   }
 
   void _updateCheckoutData(LoyaltySettings settings, CheckoutFieldsConfig config) {

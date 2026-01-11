@@ -51,7 +51,9 @@ class OrderService {
     int? loyaltyPointsUsed,
     Map<String, dynamic>? customerAddress,
   }) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid;
+    final isAnon = user?.isAnonymous ?? true;
     if (uid == null) {
       throw StateError('Not signed in; initialize anonymous auth first.');
     }
@@ -128,10 +130,14 @@ class OrderService {
         return 'ORD-${nextCount.toString().padLeft(3, '0')}';
       });
 
+      final customerUid = (!isAnon) ? user!.uid : null;
       await doc.set({
         'merchantId': _m,
         'branchId': _b,
         'userId': uid,
+        if (customerUid != null) 'customerUid': customerUid,
+        if (!isAnon && customerPhone != null && customerPhone.isNotEmpty)
+          'customerPhoneE164': customerPhone,
         'status': 'pending',
         'fulfillmentType': fulfillmentType.toFirestore(), // NEW: Canonical fulfillment type
         'items': items.map((e) => {
@@ -168,6 +174,8 @@ class OrderService {
       items: items,
       subtotal: subtotal,
       fulfillmentType: fulfillmentType,
+      customerUid: customerUid,
+      customerPhoneE164: (!isAnon) ? customerPhone : null,
       table: table,
       customerPhone: customerPhone,
       customerCarPlate: customerCarPlate,
@@ -186,76 +194,27 @@ class OrderService {
   /// Live stream of the order document.
   Stream<om.Order> watchOrder(String orderId) {
     final docRef = _orderDoc(orderId);
-    return docRef.snapshots().where((s) => s.exists).map((snap) {
-      final data = snap.data()!;
-      final String statusStr = _asString(data['status'], fallback: 'pending');
+    return docRef.snapshots().where((s) => s.exists).map(_orderFromSnapshot);
+  }
 
-      final dynamic ts = data['createdAt'];
-      final DateTime createdAt =
-          ts is Timestamp ? ts.toDate() : DateTime.now();
+  /// Stream of recent orders for the logged-in customer (scoped to merchant/branch).
+  Stream<List<om.Order>> watchCustomerOrders(String customerUid,
+      {int limit = 50}) {
+    final q = _fs
+        .collection('merchants')
+        .doc(_m)
+        .collection('branches')
+        .doc(_b)
+        .collection('orders')
+        .where('customerUid', isEqualTo: customerUid)
+        .orderBy('createdAt', descending: true)
+        .limit(limit);
 
-      final List<dynamic> rawItems = (data['items'] as List?) ?? const [];
-      final List<om.OrderItem> itemsList = rawItems
-          .whereType<Map>() // ensures map elements only
-          .map((m) => _itemFromMap(_safeJson(m)))
-          .toList();
-
-      final double subtotalNum = (data['subtotal'] is num)
-          ? (data['subtotal'] as num).toDouble()
-          : itemsList.fold<double>(
-              0.0, (s, it) => s + (it.price * it.qty.toDouble()));
-
-      // Parse address if present
-      BahrainAddress? address;
-      if (data['customerAddress'] != null && data['customerAddress'] is Map) {
-        try {
-          address = BahrainAddress.fromMap(_safeJson(data['customerAddress']));
-        } catch (_) {
-          address = null;
-        }
-      }
-
-      // Read fulfillmentType with backward compatibility
-      om.FulfillmentType fulfillmentType;
-      final fulfillmentTypeStr = _asNullableString(data['fulfillmentType']);
-
-      if (fulfillmentTypeStr != null && fulfillmentTypeStr.isNotEmpty) {
-        // New orders have explicit fulfillmentType field
-        fulfillmentType = om.FulfillmentTypeX.fromFirestore(fulfillmentTypeStr);
-      } else {
-        // Backward compatibility: infer from existing fields
-        // Priority: address > car plate > table (most specific to least)
-        if (address != null) {
-          fulfillmentType = om.FulfillmentType.delivery;
-        } else if (_asNullableString(data['customerCarPlate']) != null &&
-                   _asNullableString(data['customerCarPlate'])!.trim().isNotEmpty) {
-          fulfillmentType = om.FulfillmentType.carPickup;
-        } else {
-          // Default to dine-in if table exists, otherwise car pickup
-          fulfillmentType = _asNullableString(data['table']) != null &&
-                           _asNullableString(data['table'])!.trim().isNotEmpty
-              ? om.FulfillmentType.dineIn
-              : om.FulfillmentType.carPickup;
-        }
-      }
-
-      return om.Order(
-        orderId: snap.id,
-        orderNo: _asString(data['orderNo'], fallback: '—'),
-        status: _statusFromString(statusStr),
-        createdAt: createdAt,
-        items: itemsList,
-        subtotal: double.parse(subtotalNum.toStringAsFixed(3)),
-        fulfillmentType: fulfillmentType,
-        table: _asNullableString(data['table']),
-        customerPhone: _asNullableString(data['customerPhone']),
-        customerCarPlate: _asNullableString(data['customerCarPlate']),
-        loyaltyDiscount: data['loyaltyDiscount'] != null ? _asNum(data['loyaltyDiscount']).toDouble() : null,
-        loyaltyPointsUsed: data['loyaltyPointsUsed'] != null ? _asNum(data['loyaltyPointsUsed']).toInt() : null,
-        customerAddress: address,
-        cancellationReason: _asNullableString(data['cancellationReason']),
-      );
-    });
+    return q.snapshots().map(
+          (qs) => qs.docs
+              .map(_orderFromSnapshot)
+              .toList(),
+        );
   }
 
   DocumentReference<Map<String, dynamic>> _orderDoc(String orderId) {
@@ -325,6 +284,76 @@ class OrderService {
       return parsed ?? fallback;
     }
     return fallback;
+  }
+
+  om.Order _orderFromSnapshot(DocumentSnapshot<Json> snap) {
+    final data = snap.data() ?? <String, dynamic>{};
+    final String statusStr = _asString(data['status'], fallback: 'pending');
+
+    final dynamic ts = data['createdAt'];
+    final DateTime createdAt = ts is Timestamp ? ts.toDate() : DateTime.now();
+
+    final List<dynamic> rawItems = (data['items'] as List?) ?? const [];
+    final List<om.OrderItem> itemsList = rawItems
+        .whereType<Map>()
+        .map((m) => _itemFromMap(_safeJson(m)))
+        .toList();
+
+    final double subtotalNum = (data['subtotal'] is num)
+        ? (data['subtotal'] as num).toDouble()
+        : itemsList.fold<double>(
+            0.0, (s, it) => s + (it.price * it.qty.toDouble()));
+
+    BahrainAddress? address;
+    if (data['customerAddress'] != null && data['customerAddress'] is Map) {
+      try {
+        address = BahrainAddress.fromMap(_safeJson(data['customerAddress']));
+      } catch (_) {
+        address = null;
+      }
+    }
+
+    om.FulfillmentType fulfillmentType;
+    final fulfillmentTypeStr = _asNullableString(data['fulfillmentType']);
+
+    if (fulfillmentTypeStr != null && fulfillmentTypeStr.isNotEmpty) {
+      fulfillmentType = om.FulfillmentTypeX.fromFirestore(fulfillmentTypeStr);
+    } else {
+      if (address != null) {
+        fulfillmentType = om.FulfillmentType.delivery;
+      } else if (_asNullableString(data['customerCarPlate']) != null &&
+          _asNullableString(data['customerCarPlate'])!.trim().isNotEmpty) {
+        fulfillmentType = om.FulfillmentType.carPickup;
+      } else {
+        fulfillmentType = _asNullableString(data['table']) != null &&
+                _asNullableString(data['table'])!.trim().isNotEmpty
+            ? om.FulfillmentType.dineIn
+            : om.FulfillmentType.carPickup;
+      }
+    }
+
+    return om.Order(
+      orderId: snap.id,
+      orderNo: _asString(data['orderNo'], fallback: '—'),
+      status: _statusFromString(statusStr),
+      createdAt: createdAt,
+      items: itemsList,
+      subtotal: double.parse(subtotalNum.toStringAsFixed(3)),
+      fulfillmentType: fulfillmentType,
+      table: _asNullableString(data['table']),
+      customerPhone: _asNullableString(data['customerPhone']),
+      customerCarPlate: _asNullableString(data['customerCarPlate']),
+      loyaltyDiscount: data['loyaltyDiscount'] != null
+          ? _asNum(data['loyaltyDiscount']).toDouble()
+          : null,
+      loyaltyPointsUsed: data['loyaltyPointsUsed'] != null
+          ? _asNum(data['loyaltyPointsUsed']).toInt()
+          : null,
+      customerAddress: address,
+      cancellationReason: _asNullableString(data['cancellationReason']),
+      customerUid: _asNullableString(data['customerUid']),
+      customerPhoneE164: _asNullableString(data['customerPhoneE164']),
+    );
   }
 }
 

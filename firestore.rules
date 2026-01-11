@@ -80,6 +80,19 @@ service cloud.firestore {
 
     // ==================== GLOBAL COLLECTIONS ====================
 
+    // User profiles and saved data
+    match /users/{uid} {
+      allow read, write: if isSignedIn() && request.auth.uid == uid;
+
+      match /cars/{carId} {
+        allow read, write: if isSignedIn() && request.auth.uid == uid;
+      }
+
+      match /addresses/{addressId} {
+        allow read, write: if isSignedIn() && request.auth.uid == uid;
+      }
+    }
+
     // Slugs: Public read, no direct writes (only via Cloud Functions or manual admin)
     match /slugs/{slug} {
       allow read: if true;
@@ -155,9 +168,15 @@ service cloud.firestore {
             hasRequiredCheckoutFields(merchantId, branchId, request.resource.data);
 
           // READ: Own orders or staff
-          allow read: if isSignedIn() &&
-            (resource.data.userId == request.auth.uid ||
-             isStaff(merchantId, branchId));
+          allow read: if
+            (
+              isSignedIn() &&
+              (
+                resource.data.userId == request.auth.uid ||
+                (resource.data.keys().hasAny(['customerUid']) && resource.data.customerUid == request.auth.uid)
+              )
+            ) ||
+            isStaff(merchantId, branchId);
 
           // UPDATE: Service account (Cloudflare Worker) can ONLY update notification fields
           allow update: if isServiceAccount() &&

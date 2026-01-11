@@ -72,6 +72,10 @@ class Order {
   final List<OrderItem> items;
   final double subtotal;
 
+  // Customer identity (optional for logged-in users)
+  final String? customerUid;          // Firebase auth uid
+  final String? customerPhoneE164;    // Phone in E.164 if logged in
+
   // Fulfillment type (REQUIRED - canonical source of truth)
   final FulfillmentType fulfillmentType;
 
@@ -97,6 +101,8 @@ class Order {
     required this.items,
     required this.subtotal,
     required this.fulfillmentType,
+    this.customerUid,
+    this.customerPhoneE164,
     this.table,
     this.customerPhone,
     this.customerCarPlate,
@@ -115,6 +121,8 @@ class Order {
       items: items,
       subtotal: subtotal,
       fulfillmentType: fulfillmentType,
+      customerUid: customerUid,
+      customerPhoneE164: customerPhoneE164,
       table: table,
       customerPhone: customerPhone,
       customerCarPlate: customerCarPlate,

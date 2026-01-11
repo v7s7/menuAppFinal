@@ -15,6 +15,9 @@ import 'features/cart/state/cart_controller.dart'; // for live cart count
 import 'features/orders/widgets/active_orders_sheet.dart';
 import 'features/orders/data/active_orders_service.dart'
     show activeOrdersCountProvider, activeOrdersServiceProvider;
+import 'features/auth/widgets/login_modal.dart';
+import 'features/auth/widgets/profile_menu_modal.dart';
+import 'core/auth/auth_service.dart';
 
 class SweetsApp extends ConsumerStatefulWidget {
   const SweetsApp({super.key});
@@ -139,6 +142,15 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
       builder: (context) => const CartSheet(),
     );
   }
+  
+  Future<void> _openAuthEntry(BuildContext context) async {
+    final loggedIn = ref.read(isLoggedInProvider);
+    if (loggedIn) {
+      await showProfileMenuModal(context);
+    } else {
+      await showLoginModal(context);
+    }
+  }
 
   void _openActiveOrdersSheet(BuildContext context) {
     showModalBottomSheet(
@@ -183,6 +195,20 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         automaticallyImplyLeading: false, // hides back arrow
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: OutlinedButton(
+            style: OutlinedButton.styleFrom(
+              shape: const CircleBorder(),
+              side: BorderSide(color: onSurface),
+              minimumSize: const Size(48, 48),
+              padding: EdgeInsets.zero,
+              foregroundColor: onSurface,
+            ),
+            onPressed: () => _openAuthEntry(context),
+            child: const Icon(Icons.person_outline, size: 20),
+          ),
+        ),
         title: Text(
           b.title,
           style: AppTheme.scriptTitle.copyWith(color: onSurface),
