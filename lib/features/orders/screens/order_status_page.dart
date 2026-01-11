@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/config/app_config.dart';
 import '../../orders/data/order_models.dart';
 import '../../orders/data/order_service.dart';
 
@@ -13,6 +14,7 @@ class OrderStatusPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final stream = ref.watch(orderServiceProvider).watchOrder(orderId);
     final cs = Theme.of(context).colorScheme;
+    final cfg = ref.watch(appConfigProvider);
 
     return StreamBuilder<Order>(
       stream: stream,
@@ -57,8 +59,18 @@ class OrderStatusPage extends ConsumerWidget {
               leading: IconButton(
                 icon: const Icon(Icons.close),
                 onPressed: () {
-                  // Navigate back to menu (pop to root), preserving slug
-                  Navigator.of(context).popUntil((route) => route.isFirst);
+                  // Navigate back to menu, preserving slug in URL
+                  final slug = cfg.slug;
+                  if (slug != null && slug.trim().isNotEmpty) {
+                    // Use pushNamedAndRemoveUntil to preserve slug in web URL
+                    Navigator.of(context).pushNamedAndRemoveUntil(
+                      '/s/${slug.trim()}',
+                      (route) => false,
+                    );
+                  } else {
+                    // Fallback: pop to root if no slug
+                    Navigator.of(context).popUntil((route) => route.isFirst);
+                  }
                 },
               ),
             ),
