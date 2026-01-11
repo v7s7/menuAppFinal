@@ -251,12 +251,12 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
                       style: OutlinedButton.styleFrom(
                         shape: const CircleBorder(),
                         side: BorderSide(color: onSurface),
-                        minimumSize: const Size(40, 40),
+                        minimumSize: const Size(48, 48),
                         padding: EdgeInsets.zero,
                         foregroundColor: onSurface, // icon color
                       ),
                       onPressed: () => _openCartSheet(context),
-                      child: const Icon(Icons.shopping_bag_outlined, size: 18),
+                      child: const Icon(Icons.shopping_bag_outlined, size: 20),
                     ),
                     if (cartCount > 0)
                       Positioned(
@@ -281,12 +281,12 @@ class _CustomerScaffoldState extends ConsumerState<_CustomerScaffold> {
                         style: OutlinedButton.styleFrom(
                           shape: const CircleBorder(),
                           side: BorderSide(color: onSurface),
-                          minimumSize: const Size(40, 40),
+                          minimumSize: const Size(48, 48),
                           padding: EdgeInsets.zero,
                           foregroundColor: onSurface,
                         ),
                         onPressed: () => _openActiveOrdersSheet(context),
-                        child: const Icon(Icons.receipt_long, size: 18),
+                        child: const Icon(Icons.receipt_long, size: 20),
                       ),
                       Positioned(
                         right: -2,
