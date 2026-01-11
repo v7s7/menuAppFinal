@@ -379,14 +379,14 @@ class _CartCountBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.30), // neutral dark overlay
+        color: Colors.red, // Red background for clear visibility
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: onSurface.withValues(alpha: 0.6)),
+        border: Border.all(color: Colors.red.shade700, width: 1.5),
       ),
       child: Text(
         text,
-        style: TextStyle(
-          color: onSurface, // secondary/onSurface
+        style: const TextStyle(
+          color: Colors.white, // White text for contrast
           fontSize: 10,
           fontWeight: FontWeight.w800,
         ),
